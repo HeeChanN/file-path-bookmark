@@ -1,0 +1,14 @@
+{
+  "name": "File-Picker-Notifer",
+  "version": "1.0.0",
+  "manifest_version": 3,
+  "permissions": ["scripting", "activeTab", "nativeMessaging"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["contentscript.js"],
+    "run_at": "document_start",
+    "all_frames": true
+  }]
+}
