@@ -1,0 +1,9 @@
+{
+  "name": "com.filepathbookmark.host",
+  "description": "Notify Swing app when file dialog opens",
+  "path": "C:\\Users\\ahc70\\Desktop\\file-path-bookmark\\app\\FilePickerHelper\\FilePickerHelper.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://<service-id>/"
+  ]
+}
