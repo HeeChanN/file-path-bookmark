@@ -1,12 +1,14 @@
 package service.bookmark;
 
+import infra.FileUtils;
 import model.Bookmark;
-import model.BookmarkTargetType;
+import model.BookmarkType;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import service.IdGenerator;
-import service.bookmark_group.BookmarkGroupService;
+
+import java.util.List;
 
 
 public class BookmarkService {
@@ -19,18 +21,40 @@ public class BookmarkService {
         this.idGenerator = idGenerator;
     }
 
-    public Bookmark createBookmark(long groupId, String displayName, String lnkPath) {
-        logger.info("createBookmark() - {}, {}, {}",groupId,displayName,lnkPath);
-        Bookmark bookmark = bookmarkRepository.save(new Bookmark(idGenerator.nextBookmarkId(),groupId,displayName,lnkPath, BookmarkTargetType.FILE));
+    public Bookmark createBookmark(long groupId, String displayName, String path) {
+        BookmarkType bookmarkType = FileUtils.validateFileOrDirectory(path);
+        Bookmark bookmark = bookmarkRepository.save(new Bookmark(idGenerator.nextBookmarkId(),groupId,displayName,path, bookmarkType));
         logger.info("createBookmark() - {}",bookmarkRepository.findById(bookmark.getId()));
         return bookmark;
     }
 
-    public void remove(long id){
-        bookmarkRepository.deleteById(id);
+    public void reorderBookmark(long groupId, long prevId, int toIndex) {
+        List<Bookmark> bookmarks = bookmarkRepository.findAllByGroupId(groupId);
+
+        int fromIndex = -1;
+        for (int i = 0; i < bookmarks.size(); i++) {
+            if (bookmarks.get(i).getId() == prevId) {
+                fromIndex = i;
+                break;
+            }
+        }
+        if (fromIndex < 0) {
+            throw new RuntimeException("unknown bookMarkId: " + prevId);
+        }
+        Bookmark bookmark = bookmarks.remove(fromIndex);
+        bookmarks.add(toIndex,bookmark);
+        bookmarkRepository.saveAll(bookmarks);
     }
 
-    public void reorderCategory() {
-        // TODO: 기본 로직 모두 구현하고 작성하기
+    public Bookmark updateBookmark(long bookmarkId, String displayName, String path) {
+        Bookmark bookmark = bookmarkRepository.findById(bookmarkId)
+                .orElseThrow(() -> new RuntimeException("bookmark not found"));
+        BookmarkType bookmarkType = FileUtils.validateFileOrDirectory(path);
+        bookmark.update(displayName,path, bookmarkType);
+        return bookmarkRepository.update(bookmark);
+    }
+
+    public void remove(long id){
+        bookmarkRepository.deleteById(id);
     }
 }

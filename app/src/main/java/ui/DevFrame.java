@@ -65,7 +65,7 @@ public class DevFrame extends JFrame {
             var bms = g.getBookmarks(); // 여기서 lazy restore가 일어날 수 있음
             log.info("- Group [{}] {} (bookmarks={})", g.getId(), g.getName(), bms.size());
             for (Bookmark b : bms) {
-                log.info("   * [{}] {} -> {}", b.getId(), b.getDisplayName(), b.getLinkPath());
+                log.info("   * [{}] {} -> {}", b.getId(), b.getDisplayName(), b.getPath());
             }
         }
     }

@@ -252,7 +252,7 @@ public class MainFrame extends JFrame {
 
             JLabel label = new JLabel(
                     "<html><b>" + esc(bm.getDisplayName()) + "</b><br>" +
-                            "<span style='font-size:10px;color:gray'>" + esc(bm.getLinkPath()) + "</span></html>"
+                            "<span style='font-size:10px;color:gray'>" + esc(bm.getPath()) + "</span></html>"
             );
 
             JButton copyBtn = new JButton("복사");
@@ -274,7 +274,7 @@ public class MainFrame extends JFrame {
             // 동작
             copyBtn.addActionListener(e -> {
                 Toolkit.getDefaultToolkit().getSystemClipboard()
-                        .setContents(new StringSelection(bm.getLinkPath()), null);
+                        .setContents(new StringSelection(bm.getPath()), null);
                 JOptionPane.showMessageDialog(MainFrame.this, "경로를 클립보드에 복사했습니다.");
             });
 

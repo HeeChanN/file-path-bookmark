@@ -7,6 +7,7 @@ import service.bookmark.BookmarkRepository;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class BookmarkMicroStreamRepository implements BookmarkRepository {
 
@@ -48,5 +49,27 @@ public class BookmarkMicroStreamRepository implements BookmarkRepository {
                 .flatMap(group -> group.getBookmarks().stream())
                 .filter(bookmark -> bookmark.getId() == id)
                 .findFirst();
+    }
+
+    @Override
+    public Bookmark update(Bookmark bookmark) {
+        BookmarkGroup bookmarkGroup = root.groups().stream()
+                .filter(group -> group.getId() == bookmark.getGroupId())
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Group not found: " + bookmark.getGroupId()));
+        storage.store(bookmarkGroup.getBookmarks());
+        return bookmark;
+    }
+
+    @Override
+    public List<Bookmark> findAllByGroupId(long groupId) {
+        return root.groups().stream().filter(group -> group.getId() == groupId)
+                .map(BookmarkGroup::getBookmarks).flatMap(List::stream)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public void saveAll(List<Bookmark> bookmarks) {
+        storage.store(bookmarks);
     }
 }
