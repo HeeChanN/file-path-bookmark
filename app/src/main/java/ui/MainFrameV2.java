@@ -364,6 +364,7 @@ public class MainFrameV2 extends JFrame {
                 catch (RuntimeException ex) { showError("삭제 실패: " + ex.getMessage()); }
             });
             menu.add(del);
+            stylizePopupMenu(menu);
             return menu;
         }
 
@@ -540,6 +541,7 @@ public class MainFrameV2 extends JFrame {
             del.addActionListener(e -> deleteBookmark());
             menu.add(del);
 
+            stylizePopupMenu(menu);
             return menu;
         }
 
@@ -991,6 +993,34 @@ public class MainFrameV2 extends JFrame {
         b.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
         b.setContentAreaFilled(false);
         b.setFocusPainted(false);
+    }
+
+    private static void stylizePopupMenu(JPopupMenu menu) {
+        menu.setBackground(NOTION_BG);
+        menu.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(NOTION_BORDER, 1),
+            BorderFactory.createEmptyBorder(4, 0, 4, 0)
+        ));
+
+        for (Component c : menu.getComponents()) {
+            if (c instanceof JMenuItem item) {
+                item.setBackground(NOTION_BG);
+                item.setForeground(NOTION_TEXT);
+                item.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
+                item.setOpaque(true);
+
+                item.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseEntered(MouseEvent e) {
+                        item.setBackground(NOTION_HOVER);
+                    }
+                    @Override
+                    public void mouseExited(MouseEvent e) {
+                        item.setBackground(NOTION_BG);
+                    }
+                });
+            }
+        }
     }
 
     private static String esc(String s) {
