@@ -30,8 +30,9 @@ public class App {
                 root.groups().stream().flatMap(bookmarkGroup-> bookmarkGroup.getBookmarks().stream())
                         .toList()
         );
-        BookmarkService bookmarkService = new BookmarkService(bookmarkRepository, idGenerator);
         BookmarkGroupService bookmarkGroupService = new BookmarkGroupService(bookmarkGroupRepository, idGenerator);
+        BookmarkService bookmarkService = new BookmarkService(bookmarkRepository, bookmarkGroupService,idGenerator);
+
 
 
         MicroStreamConfig.createDefaultGroup(root,bookmarkGroupService);

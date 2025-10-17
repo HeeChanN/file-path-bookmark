@@ -22,6 +22,12 @@ public class BookmarkGroupService {
         return bookmarkGroupRepository.save(new BookmarkGroup(name, idGenerator.nextGroupId()));
     }
 
+    public BookmarkGroup getBookmarkGroup(long id){
+        return bookmarkGroupRepository.findById(id).orElseThrow(
+                () -> new RuntimeException("그룹이 존재하지 않습니다.")
+        );
+    }
+
     public List<BookmarkGroup> getBookmarkGroups(){
         return bookmarkGroupRepository.findAll();
     }

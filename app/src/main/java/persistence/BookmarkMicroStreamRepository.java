@@ -63,13 +63,15 @@ public class BookmarkMicroStreamRepository implements BookmarkRepository {
 
     @Override
     public List<Bookmark> findAllByGroupId(long groupId) {
-        return root.groups().stream().filter(group -> group.getId() == groupId)
-                .map(BookmarkGroup::getBookmarks).flatMap(List::stream)
-                .collect(Collectors.toList());
+        BookmarkGroup group = root.groups().stream()
+                .filter(g -> java.util.Objects.equals(g.getId(), groupId))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("그룹이 존재하지 않습니다."));
+        return group.getBookmarks();
     }
 
     @Override
-    public void saveAll(List<Bookmark> bookmarks) {
-        storage.store(bookmarks);
+    public void saveAll(BookmarkGroup bookmarkGroup) {
+        storage.store(bookmarkGroup.getBookmarks());
     }
 }
