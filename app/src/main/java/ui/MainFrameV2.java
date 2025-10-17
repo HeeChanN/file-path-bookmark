@@ -422,7 +422,8 @@ public class MainFrameV2 extends JFrame {
             Icon icon = iconForBookmark(bm);
             nameLabel = new JLabel(esc(bm.getDisplayName()), icon, SwingConstants.LEFT);
             nameLabel.setToolTipText(bm.getPath());
-            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN));
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 14f));
+            nameLabel.setForeground(NOTION_TEXT);
 
             // 더블클릭 = 열기
             addMouseListener(new MouseAdapter(){ @Override public void mouseClicked(MouseEvent e){ if (e.getClickCount()==2 && SwingUtilities.isLeftMouseButton(e)) { openBookmarkPath(bm.getPath()); } }});

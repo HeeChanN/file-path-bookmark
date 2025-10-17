@@ -592,10 +592,211 @@ title.setForeground(NOTION_TEXT);
 
 ---
 
+## 개선사항 상태 (제2차)
+✅ **개선사항 #7**: 툴바 버튼 Notion 스타일 개선 - **완료** (Iteration #7)
+✅ **개선사항 #8**: 상태바 스타일 개선 - **완료** (Iteration #8)
+✅ **개선사항 #9**: 그룹 제목 폰트 스타일 개선 - **완료** (Iteration #9)
+
+**현재 Notion 유사도**: 9.7/10
+
+---
+
+# 추가 UI 개선 제안 (반복 #10-12)
+
+## 분석 일시
+2025-10-17 (제3차 추가 분석)
+
+## 전체 평가
+Notion 스타일이 거의 완벽하게 구현되었습니다. 이제 최종 폴리싱과 세밀한 UX 개선에 집중합니다.
+
+**추가로 개선 가능한 영역**:
+- 북마크 라벨 폰트 크기 조정
+- 팝업 메뉴 스타일 개선
+- 스크롤바 스타일 커스터마이징
+
+---
+
+## 개선사항 #10: 북마크 라벨 폰트 크기 조정
+**우선순위**: Low
+**예상 작업 시간**: 5분
+**카테고리**: 타이포그래피
+
+### 문제점
+현재 북마크 라벨 (line 425):
+- `nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN))`
+- 폰트 크기가 기본값으로 설정되어 있음
+- Notion은 북마크 항목이 14px 크기로 표시됨
+- 현재는 크기 지정 없이 시스템 기본값 사용
+
+### 개선 방향
+북마크 라벨의 폰트 크기를 명시적으로 설정:
+```java
+nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 14f));
+nameLabel.setForeground(NOTION_TEXT);
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: BookmarkRow 생성자, line 425
+- **변경**:
+  ```java
+  // Before
+  nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN));
+
+  // After
+  nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 14f));
+  nameLabel.setForeground(NOTION_TEXT);
+  ```
+
+### 기대 효과
+- 북마크 텍스트의 가독성 향상
+- Notion의 타이포그래피 완벽 재현
+- 일관된 폰트 크기로 전문적인 느낌
+
+---
+
+## 개선사항 #11: 팝업 메뉴(JPopupMenu) 스타일 개선
+**우선순위**: Medium
+**예상 작업 시간**: 20분
+**카테고리**: 인터랙션/메뉴
+
+### 문제점
+현재 팝업 메뉴:
+- 기본 Swing 스타일 사용
+- Notion의 부드러운 색감과 다름
+- 메뉴 아이템에 호버 효과가 기본 스타일
+- 패딩과 간격이 좁음
+
+Notion의 컨텍스트 메뉴:
+- 부드러운 배경색 (NOTION_BG)
+- 호버 시 NOTION_HOVER
+- 여유있는 패딩 (6-8px)
+- 아이콘과 텍스트 간격 명확
+
+### 개선 방향
+팝업 메뉴 스타일을 Notion 스타일로 변경하는 메서드 추가:
+```java
+private static void stylizePopupMenu(JPopupMenu menu) {
+    menu.setBackground(NOTION_BG);
+    menu.setBorder(BorderFactory.createCompoundBorder(
+        BorderFactory.createLineBorder(NOTION_BORDER, 1),
+        BorderFactory.createEmptyBorder(4, 0, 4, 0)
+    ));
+
+    for (Component c : menu.getComponents()) {
+        if (c instanceof JMenuItem item) {
+            item.setBackground(NOTION_BG);
+            item.setForeground(NOTION_TEXT);
+            item.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 12));
+            item.setOpaque(true);
+
+            item.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    item.setBackground(NOTION_HOVER);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    item.setBackground(NOTION_BG);
+                }
+            });
+        }
+    }
+}
+```
+
+그리고 모든 `buildGroupPopupMenu()` 및 `buildRowPopupMenu()` 메서드에서 메뉴 반환 전에 적용:
+```java
+private JPopupMenu buildGroupPopupMenu() {
+    JPopupMenu menu = new JPopupMenu();
+    // ... 메뉴 아이템 추가 ...
+    stylizePopupMenu(menu);
+    return menu;
+}
+```
+
+### 기대 효과
+- 팝업 메뉴가 전체 UI와 조화
+- Notion의 일관된 인터랙션 경험
+- 시각적 완성도 향상
+
+---
+
+## 개선사항 #12: 스크롤바 스타일 커스터마이징
+**우선순위**: Low
+**예상 작업 시간**: 15분
+**카테고리**: UI 폴리싱
+
+### 문제점
+현재 스크롤바:
+- 기본 Swing 스크롤바 사용
+- Notion의 얇고 미니멀한 스크롤바와 다름
+- 호버 전에는 거의 보이지 않는 Notion 스타일 미구현
+
+Notion의 스크롤바:
+- 평상시: 매우 얇고 반투명 (약 6-8px)
+- 호버 시: 약간 더 진하게 표시
+- 배경과 잘 어울리는 색상
+
+### 개선 방향
+JScrollPane의 스크롤바에 커스텀 UI 적용:
+```java
+// 생성자에서 scroll 생성 후
+scroll.getVerticalScrollBar().setUI(new NotionScrollBarUI());
+scroll.getVerticalScrollBar().setUnitIncrement(16);
+
+// 커스텀 스크롤바 UI 클래스
+private static class NotionScrollBarUI extends javax.swing.plaf.basic.BasicScrollBarUI {
+    @Override
+    protected void configureScrollBarColors() {
+        this.thumbColor = new Color(155, 154, 151, 100); // NOTION_HINT with alpha
+        this.trackColor = NOTION_BG;
+    }
+
+    @Override
+    protected JButton createDecreaseButton(int orientation) {
+        return createZeroButton();
+    }
+
+    @Override
+    protected JButton createIncreaseButton(int orientation) {
+        return createZeroButton();
+    }
+
+    private JButton createZeroButton() {
+        JButton button = new JButton();
+        button.setPreferredSize(new Dimension(0, 0));
+        return button;
+    }
+
+    @Override
+    protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds) {
+        Graphics2D g2 = (Graphics2D) g.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setColor(thumbColor);
+        g2.fillRoundRect(thumbBounds.x + 2, thumbBounds.y + 2,
+                         thumbBounds.width - 4, thumbBounds.height - 4, 4, 4);
+        g2.dispose();
+    }
+
+    @Override
+    protected void paintTrack(Graphics g, JComponent c, Rectangle trackBounds) {
+        // 트랙을 그리지 않음 (Notion 스타일)
+    }
+}
+```
+
+### 기대 효과
+- Notion과 동일한 미니멀한 스크롤바
+- UI의 최종 폴리싱
+- 전문적이고 현대적인 느낌 완성
+
+---
+
 ## 다음 단계
-**우선 구현할 개선사항**: #7 (툴바 버튼 Notion 스타일 개선)
+**우선 구현할 개선사항**: #10 (북마크 라벨 폰트 크기 조정)
 
 **이유**:
-- 사용자가 자주 클릭하는 요소
-- 시각적 피드백이 즉각적으로 느껴짐
-- 구현이 간단하고 효과가 명확함
+- 가장 간단하고 빠르게 적용 가능
+- 즉각적인 시각적 개선 효과
+- 타이포그래피 일관성 확보
