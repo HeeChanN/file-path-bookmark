@@ -101,6 +101,10 @@ public class MainFrameV2 extends JFrame {
         // 하단 상태바
         statusBar.setBackground(NOTION_BG);
         statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, getSeparatorColor()));
+        statusLabel.setForeground(NOTION_TEXT);
+        statusLabel.setFont(statusLabel.getFont().deriveFont(13f));
+        stylizeButton(statusActionBtn);
+        statusActionBtn.setForeground(NOTION_ACCENT);
         statusActionBtn.setVisible(false);
         statusActionBtn.setFocusable(false);
         statusActionBtn.addActionListener(e -> { if(statusActionHandler!=null) statusActionHandler.run(); });
