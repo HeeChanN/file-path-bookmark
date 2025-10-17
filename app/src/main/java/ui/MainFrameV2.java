@@ -275,6 +275,18 @@ public class MainFrameV2 extends JFrame {
 
             add(header, BorderLayout.NORTH);
 
+            // 헤더 호버 효과
+            header.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    header.setBackground(NOTION_HOVER);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    header.setBackground(NOTION_BG);
+                }
+            });
+
             // 콘텐츠(북마크 리스트) — Compact 스타일
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
             content.setBorder(BorderFactory.createEmptyBorder(2, 24, 4, 12)); // 가벼운 들여쓰기
@@ -418,6 +430,18 @@ public class MainFrameV2 extends JFrame {
             add(nameLabel, gbc);
             gbc.gridx=1; gbc.weightx=0; gbc.fill = GridBagConstraints.NONE; gbc.anchor=GridBagConstraints.EAST;
             add(moreBtn, gbc);
+
+            // Notion 스타일 호버 효과
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    setBackground(NOTION_HOVER);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    setBackground(NOTION_BG);
+                }
+            });
         }
 
         private JPopupMenu buildRowPopupMenu(){
