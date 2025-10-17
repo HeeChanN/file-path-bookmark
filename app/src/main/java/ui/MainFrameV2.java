@@ -236,8 +236,22 @@ public class MainFrameV2 extends JFrame {
             toggle.setBorderPainted(false);
             toggle.setContentAreaFilled(false);
             toggle.setFocusPainted(false);
+            toggle.setOpaque(false);
+            toggle.setPreferredSize(new Dimension(24, 24));
             toggle.setSelected(expandState.getOrDefault(group.getId(), Boolean.TRUE));
             updateToggleGlyph();
+            // 토글 버튼 호버 효과
+            toggle.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    toggle.setBackground(NOTION_HOVER);
+                    toggle.setOpaque(true);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    toggle.setOpaque(false);
+                }
+            });
 
             // 그룹명 (더블클릭으로 이름 변경)
             title.setText(group.getName());
