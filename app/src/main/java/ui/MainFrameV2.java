@@ -21,6 +21,13 @@ import java.util.prefs.Preferences;
 
 public class MainFrameV2 extends JFrame {
 
+    // Notion 라이트 테마 색상
+    private static final Color NOTION_BG = new Color(247, 246, 243);
+    private static final Color NOTION_TEXT = new Color(55, 53, 47);
+    private static final Color NOTION_HOVER = new Color(232, 231, 227);
+    private static final Color NOTION_BORDER = new Color(232, 231, 227);
+    private static final Color NOTION_ACCENT = new Color(35, 131, 226);
+
     private final BookmarkService bookmarkService;
     private final BookmarkGroupService bookmarkGroupService;
 
@@ -68,6 +75,7 @@ public class MainFrameV2 extends JFrame {
         setSize(900, 600);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
+        getContentPane().setBackground(NOTION_BG);
         loadWindowPrefs();
 
         // 상단 툴바
@@ -76,7 +84,9 @@ public class MainFrameV2 extends JFrame {
 
         // 중앙 아코디언 컨테이너
         accordion.setLayout(new BoxLayout(accordion, BoxLayout.Y_AXIS));
+        accordion.setBackground(NOTION_BG);
         scroll = new JScrollPane(accordion);
+        scroll.getViewport().setBackground(NOTION_BG);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         add(scroll, BorderLayout.CENTER);
 
@@ -88,6 +98,7 @@ public class MainFrameV2 extends JFrame {
         highlight.setVisible(false);
 
         // 하단 상태바
+        statusBar.setBackground(NOTION_BG);
         statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, getSeparatorColor()));
         statusActionBtn.setVisible(false);
         statusActionBtn.setFocusable(false);
@@ -109,6 +120,7 @@ public class MainFrameV2 extends JFrame {
     // 상단 툴바 (심플)
     private JComponent buildToolbar() {
         var bar = new JPanel(new GridBagLayout());
+        bar.setBackground(NOTION_BG);
         var gbc = new GridBagConstraints();
         gbc.insets = new Insets(8, 8, 8, 8);
         gbc.gridx = 0; gbc.gridy = 0; gbc.anchor = GridBagConstraints.WEST;
@@ -199,7 +211,7 @@ public class MainFrameV2 extends JFrame {
 
             // 헤더: 하단 보더만, 얇고 플랫
             header.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()));
-            header.setBackground(UIManager.getColor("Panel.background"));
+            header.setBackground(NOTION_BG);
             header.setOpaque(true);
 
             // DnD: 헤더 자체가 드래그 시작점 + Import 허용
@@ -354,7 +366,7 @@ public class MainFrameV2 extends JFrame {
             this.groupId = groupId; this.bm = bm; this.listPanel = listPanel;
 
             setOpaque(true);
-            setBackground(UIManager.getColor("Panel.background"));
+            setBackground(NOTION_BG);
             // Compact: 얇은 하단 보더, 작은 패딩
             setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
@@ -988,8 +1000,6 @@ public class MainFrameV2 extends JFrame {
     }
 
     private Color getSeparatorColor() {
-        Color c = UIManager.getColor("Component.borderColor");
-        if (c == null) c = new Color(230, 230, 235);
-        return c;
+        return NOTION_BORDER;
     }
 }
