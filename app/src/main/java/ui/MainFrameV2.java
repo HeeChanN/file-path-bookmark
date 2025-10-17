@@ -73,7 +73,7 @@ public class MainFrameV2 extends JFrame {
 
         // ====== UI 기본 ======
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        setSize(900, 600);
+        setSize(320, 720); // Notion Sidebar 비율 (좁고 길게)
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
         getContentPane().setBackground(NOTION_BG);
