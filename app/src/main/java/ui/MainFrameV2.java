@@ -27,6 +27,7 @@ public class MainFrameV2 extends JFrame {
     private static final Color NOTION_HOVER = new Color(232, 231, 227);
     private static final Color NOTION_BORDER = new Color(232, 231, 227);
     private static final Color NOTION_ACCENT = new Color(35, 131, 226);
+    private static final Color NOTION_HINT = new Color(155, 154, 151);
 
     private final BookmarkService bookmarkService;
     private final BookmarkGroupService bookmarkGroupService;
@@ -937,7 +938,8 @@ public class MainFrameV2 extends JFrame {
 
     private static JComponent emptyHint(String text) {
         JLabel l = new JLabel(text, SwingConstants.LEFT);
-        l.setForeground(new Color(120, 120, 130));
+        l.setForeground(NOTION_HINT);
+        l.setFont(l.getFont().deriveFont(13f));
         l.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         var p = new JPanel(new BorderLayout());
         p.add(l, BorderLayout.CENTER);
