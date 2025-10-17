@@ -415,11 +415,8 @@ public class MainFrameV2 extends JFrame {
 
             setOpaque(true);
             setBackground(NOTION_BG);
-            // Notion 스타일: 컴팩트한 패딩
-            setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
-                    BorderFactory.createEmptyBorder(4, 12, 4, 12) // 8px → 4px 줄임
-            ));
+            // Notion 스타일: 구분선 없는 깔끔한 디자인
+            setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
 
             // 아이콘 + 한 줄 라벨(툴팁은 전체 경로)
             Icon icon = iconForBookmark(bm);

@@ -793,10 +793,303 @@ private static class NotionScrollBarUI extends javax.swing.plaf.basic.BasicScrol
 
 ---
 
+## 개선사항 상태 (제3차)
+✅ **개선사항 #10**: 북마크 라벨 폰트 크기 조정 - **완료** (Iteration #10)
+✅ **개선사항 #11**: 팝업 메뉴 스타일 개선 - **완료** (Iteration #11)
+✅ **개선사항 #12**: 스크롤바 스타일 커스터마이징 - **완료** (Iteration #12)
+
+**현재 Notion 유사도**: 9.8/10
+
+---
+
+# 최종 UI 개선 제안 (반복 #13-15)
+
+## 분석 일시
+2025-10-17 (제4차 최종 분석)
+
+## 전체 평가
+Notion 스타일이 매우 잘 구현되었습니다. 사용자 피드백을 반영하여 최종 폴리싱을 진행합니다.
+
+**사용자 요청사항**:
+- 프레임 크기를 Notion 북마크처럼 가로가 짧고 세로가 긴 형태로 변경
+- 각 row의 높이를 Notion Sidebar처럼 간격을 촘촘하게 조정
+
+**추가로 개선 가능한 영역**:
+- 프레임 기본 크기 조정
+- 북마크 행 패딩 및 높이 최적화
+- 그룹 헤더 패딩 조정
+
+---
+
+## 개선사항 #13: 프레임 크기를 Notion Sidebar 비율로 조정
+**우선순위**: High
+**예상 작업 시간**: 5분
+**카테고리**: 레이아웃/윈도우 크기
+
+### 문제점
+현재 프레임 크기 (line 76):
+- `setSize(900, 600)` - 가로 900px, 세로 600px
+- 일반적인 가로가 넓은 형태
+- Notion Sidebar는 가로가 좁고 세로가 긴 형태 (약 280-320px × 700-800px)
+
+### 개선 방향
+Notion Sidebar 비율에 맞춰 프레임 크기 조정:
+```java
+setSize(320, 720); // 가로:세로 = 약 1:2.25 (Notion Sidebar 비율)
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: 생성자, line 76
+- **변경**:
+  ```java
+  // Before
+  setSize(900, 600);
+
+  // After
+  setSize(320, 720); // Notion Sidebar 비율
+  ```
+
+### 기대 효과
+- Notion 북마크 앱과 동일한 세로로 긴 형태
+- 사이드바 형태의 전문적인 느낌
+- 데스크탑 화면에서 효율적인 공간 사용
+
+---
+
+## 개선사항 #14: 북마크 행 높이를 Notion처럼 촘촘하게 조정
+**우선순위**: High
+**예상 작업 시간**: 10분
+**카테고리**: 레이아웃/패딩
+
+### 문제점
+현재 북마크 행 패딩 (line 418):
+- `BorderFactory.createEmptyBorder(8, 12, 8, 12)` - 상하 8px
+- Notion Sidebar는 상하 패딩이 더 작음 (약 4-6px)
+- 행 간격이 너무 넓어 촘촘한 느낌이 부족
+
+### 개선 방향
+북마크 행의 상하 패딩을 줄여 Notion처럼 촘촘하게:
+```java
+setBorder(BorderFactory.createCompoundBorder(
+    BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
+    BorderFactory.createEmptyBorder(4, 12, 4, 12) // 상하 8px → 4px
+));
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: BookmarkRow 생성자, line 416-419
+- **변경**:
+  ```java
+  // Before
+  setBorder(BorderFactory.createCompoundBorder(
+      BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
+      BorderFactory.createEmptyBorder(8, 12, 8, 12)
+  ));
+
+  // After
+  setBorder(BorderFactory.createCompoundBorder(
+      BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
+      BorderFactory.createEmptyBorder(4, 12, 4, 12)
+  ));
+  ```
+
+### 기대 효과
+- Notion Sidebar와 동일한 촘촘한 행 간격
+- 더 많은 북마크를 한 화면에 표시 가능
+- 깔끔하고 밀도 있는 UI
+
+---
+
+## 개선사항 #15: 그룹 헤더 패딩 조정
+**우선순위**: Medium
+**예상 작업 시간**: 5분
+**카테고리**: 레이아웃/패딩
+
+### 문제점
+현재 그룹 헤더 패딩 (line 301):
+- `new Insets(10, 12, 10, 12)` - 상하 10px
+- 북마크 행과의 비율을 맞추기 위해 약간 줄일 필요
+
+### 개선 방향
+그룹 헤더의 상하 패딩을 약간 줄여 균형 맞추기:
+```java
+gbc.insets = new Insets(8, 12, 8, 12); // 상하 10px → 8px
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: GroupSection 생성자, line 301
+- **변경**:
+  ```java
+  // Before
+  gbc.insets = new Insets(10, 12, 10, 12);
+
+  // After
+  gbc.insets = new Insets(8, 12, 8, 12);
+  ```
+
+### 기대 효과
+- 그룹 헤더와 북마크 행의 시각적 균형
+- 전체적으로 더 촘촘하고 일관된 느낌
+- Notion Sidebar의 밀도 있는 레이아웃 완성
+
+---
+
+## 개선사항 상태 (제4차)
+✅ **개선사항 #13**: 프레임 크기를 Notion Sidebar 비율로 조정 - **완료** (Iteration #13)
+✅ **개선사항 #14**: 북마크 행 높이를 Notion처럼 촘촘하게 조정 - **완료** (Iteration #14)
+✅ **개선사항 #15**: 그룹 헤더 패딩 조정 - **완료** (Iteration #15)
+
+**현재 Notion 유사도**: 9.9/10
+
+---
+
+# 최종 폴리싱 UI 개선 제안 (반복 #16-18)
+
+## 분석 일시
+2025-10-17 (제5차 최종 폴리싱)
+
+## 전체 평가
+Notion 스타일이 거의 완벽하게 구현되었습니다. 이제 마지막 미세 조정과 추가 사용성 개선을 진행합니다.
+
+**개선 가능한 영역**:
+- 북마크 행 구분선 제거 또는 더 연하게 조정
+- emptyHint 텍스트 크기 및 간격 조정
+- 상태바 패딩 및 폰트 크기 미세 조정
+
+---
+
+## 개선사항 #16: 북마크 행 구분선을 더 연하게 조정
+**우선순위**: Low
+**예상 작업 시간**: 5분
+**카테고리**: 시각 디자인/구분선
+
+### 문제점
+현재 북마크 행 구분선 (line 420):
+- `BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor())`
+- NOTION_BORDER 색상 사용 (232, 231, 227)
+- Notion은 행 구분선이 거의 보이지 않거나 더 연한 색상 사용
+
+### 개선 방향
+구분선을 제거하거나 더 연한 색상으로 변경:
+```java
+// 옵션 1: 구분선 제거
+setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
+
+// 옵션 2: 더 연한 구분선 (추천)
+private static final Color NOTION_SEPARATOR = new Color(240, 240, 238);
+setBorder(BorderFactory.createCompoundBorder(
+    BorderFactory.createMatteBorder(0, 0, 1, 0, NOTION_SEPARATOR),
+    BorderFactory.createEmptyBorder(4, 12, 4, 12)
+));
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: BookmarkRow 생성자, line 419-422
+- **변경**: 구분선 제거 (옵션 1 선택)
+  ```java
+  // Before
+  setBorder(BorderFactory.createCompoundBorder(
+      BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
+      BorderFactory.createEmptyBorder(4, 12, 4, 12)
+  ));
+
+  // After
+  setBorder(BorderFactory.createEmptyBorder(4, 12, 4, 12));
+  ```
+
+### 기대 효과
+- 더 깔끔하고 미니멀한 느낌
+- Notion과 동일한 시각적 경험
+- 구분선 없이도 호버 효과로 항목 구분 가능
+
+---
+
+## 개선사항 #17: emptyHint 텍스트 좌측 패딩 증가
+**우선순위**: Low
+**예상 작업 시간**: 3분
+**카테고리**: 레이아웃/패딩
+
+### 문제점
+현재 emptyHint 텍스트 (line 967):
+- `BorderFactory.createEmptyBorder(6, 8, 6, 8)` - 좌측 8px
+- 북마크 행의 좌측 패딩(12px)과 정렬이 맞지 않음
+- Notion은 힌트 텍스트가 북마크와 동일한 들여쓰기
+
+### 개선 방향
+힌트 텍스트의 좌측 패딩을 북마크와 동일하게 조정:
+```java
+l.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 8));
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: emptyHint() 메서드, line 967
+- **변경**:
+  ```java
+  // Before
+  l.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+
+  // After
+  l.setBorder(BorderFactory.createEmptyBorder(6, 12, 6, 8));
+  ```
+
+### 기대 효과
+- 힌트 텍스트가 북마크와 정렬됨
+- 시각적 일관성 향상
+- 더 정돈된 느낌
+
+---
+
+## 개선사항 #18: 상태바 좌측 패딩 증가
+**우선순위**: Low
+**예상 작업 시간**: 3분
+**카테고리**: 레이아웃/패딩
+
+### 문제점
+현재 상태바 (line 105-114):
+- statusLabel과 statusActionBtn의 좌우 패딩 없음
+- 텍스트가 가장자리에 너무 붙어있음
+- Notion은 상태바에도 좌우 패딩 적용
+
+### 개선 방향
+상태바에 좌우 패딩 추가:
+```java
+statusBar.setBorder(BorderFactory.createCompoundBorder(
+    BorderFactory.createMatteBorder(1, 0, 0, 0, getSeparatorColor()),
+    BorderFactory.createEmptyBorder(8, 12, 8, 12)
+));
+```
+
+### 구현 세부사항
+- **파일**: `app/src/main/java/ui/MainFrameV2.java`
+- **위치**: 생성자, line 105
+- **변경**:
+  ```java
+  // Before
+  statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, getSeparatorColor()));
+
+  // After
+  statusBar.setBorder(BorderFactory.createCompoundBorder(
+      BorderFactory.createMatteBorder(1, 0, 0, 0, getSeparatorColor()),
+      BorderFactory.createEmptyBorder(8, 12, 8, 12)
+  ));
+  ```
+
+### 기대 효과
+- 상태바 텍스트가 더 여유있게 표시됨
+- 전체 UI와 일관된 패딩
+- Notion의 세심한 디테일 완성
+
+---
+
 ## 다음 단계
-**우선 구현할 개선사항**: #10 (북마크 라벨 폰트 크기 조정)
+**우선 구현할 개선사항**: #16 (북마크 행 구분선 제거)
 
 **이유**:
-- 가장 간단하고 빠르게 적용 가능
-- 즉각적인 시각적 개선 효과
-- 타이포그래피 일관성 확보
+- 가장 즉각적인 시각적 개선
+- Notion의 미니멀한 느낌 완성
+- 간단한 변경으로 큰 효과
