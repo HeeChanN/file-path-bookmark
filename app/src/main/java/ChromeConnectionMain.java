@@ -13,7 +13,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 
-public class Main {
+public class ChromeConnectionMain {
     private static JFrame frame;
     private static TrayIcon trayIcon;
     private static boolean systemTrayReady = false;
@@ -66,9 +66,9 @@ public class Main {
                 sendAck("ACK", type);
 
                 if ("FILE_DIALOG_OPENING".equals(type)) {
-                    SwingUtilities.invokeLater(Main::showWindowTopRight);
+                    SwingUtilities.invokeLater(ChromeConnectionMain::showWindowTopRight);
                 } else if ("FILE_DIALOG_CLOSED".equals(type)) {
-                    SwingUtilities.invokeLater(Main::hideWindow);
+                    SwingUtilities.invokeLater(ChromeConnectionMain::hideWindow);
                 }
             }
         } catch (EOFException eof) {
