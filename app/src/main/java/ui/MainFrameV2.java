@@ -89,6 +89,8 @@ public class MainFrameV2 extends JFrame {
         scroll = new JScrollPane(accordion);
         scroll.getViewport().setBackground(NOTION_BG);
         scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setUI(new NotionScrollBarUI());
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
         add(scroll, BorderLayout.CENTER);
 
         // 그룹 DnD: 빈 공간(섹션 사이)에서도 작동하도록 아코디언에 Import 핸들러
@@ -1119,5 +1121,45 @@ public class MainFrameV2 extends JFrame {
 
     private Color getSeparatorColor() {
         return NOTION_BORDER;
+    }
+
+    /** Notion 스타일 스크롤바 UI */
+    private static class NotionScrollBarUI extends javax.swing.plaf.basic.BasicScrollBarUI {
+        @Override
+        protected void configureScrollBarColors() {
+            this.thumbColor = new Color(155, 154, 151, 100); // NOTION_HINT with alpha
+            this.trackColor = NOTION_BG;
+        }
+
+        @Override
+        protected JButton createDecreaseButton(int orientation) {
+            return createZeroButton();
+        }
+
+        @Override
+        protected JButton createIncreaseButton(int orientation) {
+            return createZeroButton();
+        }
+
+        private JButton createZeroButton() {
+            JButton button = new JButton();
+            button.setPreferredSize(new Dimension(0, 0));
+            return button;
+        }
+
+        @Override
+        protected void paintThumb(Graphics g, JComponent c, Rectangle thumbBounds) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(thumbColor);
+            g2.fillRoundRect(thumbBounds.x + 2, thumbBounds.y + 2,
+                             thumbBounds.width - 4, thumbBounds.height - 4, 4, 4);
+            g2.dispose();
+        }
+
+        @Override
+        protected void paintTrack(Graphics g, JComponent c, Rectangle trackBounds) {
+            // 트랙을 그리지 않음 (Notion 스타일)
+        }
     }
 }
