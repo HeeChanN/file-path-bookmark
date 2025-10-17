@@ -122,7 +122,7 @@ public class MainFrameV2 extends JFrame {
         var bar = new JPanel(new GridBagLayout());
         bar.setBackground(NOTION_BG);
         var gbc = new GridBagConstraints();
-        gbc.insets = new Insets(8, 8, 8, 8);
+        gbc.insets = new Insets(12, 12, 12, 12);
         gbc.gridx = 0; gbc.gridy = 0; gbc.anchor = GridBagConstraints.WEST;
 
         stylizeButton(addGroupBtn);
@@ -265,7 +265,7 @@ public class MainFrameV2 extends JFrame {
 
             // 헤더 레이아웃: [▸][제목]...................................[⋯]
             var gbc = new GridBagConstraints();
-            gbc.insets = new Insets(6, 8, 6, 8);
+            gbc.insets = new Insets(10, 12, 10, 12);
             gbc.gridx=0; gbc.gridy=0; gbc.anchor = GridBagConstraints.WEST;
             header.add(toggle, gbc);
             gbc.gridx=1; gbc.weightx=1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -287,9 +287,9 @@ public class MainFrameV2 extends JFrame {
                 }
             });
 
-            // 콘텐츠(북마크 리스트) — Compact 스타일
+            // 콘텐츠(북마크 리스트) — Notion 스타일
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-            content.setBorder(BorderFactory.createEmptyBorder(2, 24, 4, 12)); // 가벼운 들여쓰기
+            content.setBorder(BorderFactory.createEmptyBorder(4, 32, 8, 12)); // 명확한 계층 들여쓰기
             content.setOpaque(false);
             add(content, BorderLayout.CENTER);
 
@@ -379,10 +379,10 @@ public class MainFrameV2 extends JFrame {
 
             setOpaque(true);
             setBackground(NOTION_BG);
-            // Compact: 얇은 하단 보더, 작은 패딩
+            // Notion 스타일: 여유있는 패딩
             setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
-                    BorderFactory.createEmptyBorder(4, 4, 4, 4)
+                    BorderFactory.createEmptyBorder(8, 12, 8, 12)
             ));
 
             // 아이콘 + 한 줄 라벨(툴팁은 전체 경로)
