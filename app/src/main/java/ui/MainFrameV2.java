@@ -259,7 +259,8 @@ public class MainFrameV2 extends JFrame {
 
             // 그룹명 (더블클릭으로 이름 변경)
             title.setText(group.getName());
-            title.setFont(title.getFont().deriveFont(Font.PLAIN, title.getFont().getSize2D()+1));
+            title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
+            title.setForeground(NOTION_TEXT);
             title.setToolTipText("더블클릭하여 그룹명 변경");
             title.addMouseListener(new MouseAdapter(){
                 @Override public void mouseClicked(MouseEvent e){
