@@ -465,11 +465,137 @@ private static JComponent emptyHint(String text) {
 
 ---
 
+## 개선사항 상태 (추가)
+✅ **개선사항 #4**: More 버튼 호버 효과 - **완료** (Iteration #4)
+✅ **개선사항 #5**: 토글 버튼 스타일 개선 - **완료** (Iteration #6)
+✅ **개선사항 #6**: 힌트 텍스트 색상 통일 - **완료** (Iteration #5)
+
+**현재 Notion 유사도**: 9.5/10
+
+---
+
+# 추가 UI 개선 제안 (반복 #7-9)
+
+## 분석 일시
+2025-10-17 (제2차 추가 분석)
+
+## 전체 평가
+기본적인 Notion 스타일은 매우 완성도 높게 구현되었습니다. 이제 더 세밀한 폴리싱과 사용성 개선에 집중합니다.
+
+**추가로 개선 가능한 영역**:
+- 툴바 버튼 스타일 일관성
+- 상태바 스타일 개선
+- 그룹 제목 폰트 스타일
+
+---
+
+## 개선사항 #7: 툴바 버튼 Notion 스타일로 개선
+**우선순위**: Medium
+**예상 작업 시간**: 15분
+**카테고리**: 인터랙션/버튼 스타일
+
+### 문제점
+현재 툴바 버튼:
+- `stylizeButton()` 메서드가 "roundRect" 스타일만 적용 (line 964-966)
+- 호버 효과가 없어 인터랙티브하지 않음
+- Notion의 플랫하고 미니멀한 버튼 스타일과 다름
+
+Notion 툴바 버튼:
+- 기본: 투명 배경 또는 연한 회색
+- 호버: NOTION_HOVER 배경색
+- 패딩: 6-8px
+
+### 개선 방향
+stylizeButton() 메서드에 호버 효과 추가:
+```java
+private static void stylizeButton(AbstractButton b) {
+    b.setBackground(NOTION_BG);
+    b.setForeground(NOTION_TEXT);
+    b.setBorderPainted(false);
+    b.setFocusPainted(false);
+    b.setContentAreaFilled(false);
+    b.setOpaque(true);
+
+    b.addMouseListener(new MouseAdapter() {
+        @Override
+        public void mouseEntered(MouseEvent e) {
+            b.setBackground(NOTION_HOVER);
+        }
+        @Override
+        public void mouseExited(MouseEvent e) {
+            b.setBackground(NOTION_BG);
+        }
+    });
+}
+```
+
+### 기대 효과
+- 툴바 버튼의 시각적 피드백 강화
+- 전체 UI의 일관성 향상
+- Notion과 동일한 인터랙티브 경험
+
+---
+
+## 개선사항 #8: 상태바 텍스트 및 버튼 스타일 개선
+**우선순위**: Low
+**예상 작업 시간**: 10분
+**카테고리**: 색상/타이포그래피
+
+### 문제점
+현재 상태바 (line 50-55, 101-109):
+- 텍스트 색상이 기본 검정색
+- 상태 액션 버튼에 스타일 미적용
+- Notion의 부드러운 색감과 다름
+
+### 개선 방향
+1. 상태바 라벨에 Notion 텍스트 색상 적용:
+```java
+statusLabel.setForeground(NOTION_TEXT);
+statusLabel.setFont(statusLabel.getFont().deriveFont(13f));
+```
+
+2. 상태 액션 버튼 스타일 개선:
+```java
+stylizeButton(statusActionBtn);
+statusActionBtn.setForeground(NOTION_ACCENT);
+```
+
+### 기대 효과
+- 상태바가 전체 UI와 조화
+- Notion의 따뜻한 색감 유지
+- 시각적 일관성 향상
+
+---
+
+## 개선사항 #9: 그룹 제목 폰트 스타일 개선
+**우선순위**: Low
+**예상 작업 시간**: 5분
+**카테고리**: 타이포그래피
+
+### 문제점
+현재 그룹 제목 (line 257-258):
+- `title.getFont().deriveFont(Font.PLAIN, title.getFont().getSize2D()+1)`
+- 크기만 1pt 증가, 굵기는 PLAIN
+- Notion은 그룹 제목이 약간 더 굵음 (Medium weight)
+
+### 개선 방향
+그룹 제목 폰트를 Medium weight으로 변경:
+```java
+title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
+title.setForeground(NOTION_TEXT);
+```
+
+### 기대 효과
+- 그룹 제목이 더 명확하게 구분됨
+- 계층 구조의 시각적 명확성 향상
+- Notion의 타이포그래피 완벽 재현
+
+---
+
 ## 다음 단계
-**우선 구현할 개선사항**: #4 (토글 아이콘 및 More 버튼 스타일 개선)
+**우선 구현할 개선사항**: #7 (툴바 버튼 Notion 스타일 개선)
 
 **이유**:
-- 사용자가 가장 자주 인터랙션하는 요소
-- 시각적 피드백 개선으로 사용성 크게 향상
-- 구현이 명확하고 리스크가 낮음
-- Notion의 미니멀한 느낌을 완성하는 핵심 요소
+- 사용자가 자주 클릭하는 요소
+- 시각적 피드백이 즉각적으로 느껴짐
+- 구현이 간단하고 효과가 명확함

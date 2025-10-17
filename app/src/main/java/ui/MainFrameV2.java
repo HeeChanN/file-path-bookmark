@@ -962,7 +962,23 @@ public class MainFrameV2 extends JFrame {
     }
 
     private static void stylizeButton(AbstractButton b) {
-        try { b.putClientProperty("JButton.buttonType", "roundRect"); } catch (Exception ignored) {}
+        b.setBackground(NOTION_BG);
+        b.setForeground(NOTION_TEXT);
+        b.setBorderPainted(false);
+        b.setFocusPainted(false);
+        b.setContentAreaFilled(false);
+        b.setOpaque(true);
+
+        b.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                b.setBackground(NOTION_HOVER);
+            }
+            @Override
+            public void mouseExited(MouseEvent e) {
+                b.setBackground(NOTION_BG);
+            }
+        });
     }
 
     private static void stylizeIconButton(AbstractButton b) {
