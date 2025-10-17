@@ -300,7 +300,7 @@ public class MainFrameV2 extends JFrame {
 
             // 헤더 레이아웃: [▸][제목]...................................[⋯]
             var gbc = new GridBagConstraints();
-            gbc.insets = new Insets(10, 12, 10, 12);
+            gbc.insets = new Insets(8, 12, 8, 12); // 10px → 8px 줄임
             gbc.gridx=0; gbc.gridy=0; gbc.anchor = GridBagConstraints.WEST;
             header.add(toggle, gbc);
             gbc.gridx=1; gbc.weightx=1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
