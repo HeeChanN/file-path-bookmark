@@ -62,4 +62,8 @@ public class BookmarkService {
     public void remove(long id) {
         bookmarkRepository.deleteById(id);
     }
+
+    public void moveBookmark(long bookmarkId, long toGroupId, int toIndex) {
+        // TODO : UI/UX 개선 이후 기능 추가하기
+    }
 }

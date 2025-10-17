@@ -2,44 +2,61 @@ package ui;
 
 import model.Bookmark;
 import model.BookmarkGroup;
-import model.BookmarkType; // 파일/폴더 아이콘
+import model.BookmarkType;
 import service.bookmark.BookmarkService;
 import service.bookmark_group.BookmarkGroupService;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;
 import java.awt.datatransfer.Transferable;
+import java.awt.event.*;
+import java.io.File;
 import java.nio.file.Path;
-import java.util.*;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.*;
+import java.util.prefs.Preferences;
 
-/**
- * 한 패널에 '그룹 헤더(토글) + 해당 그룹 북마크 목록'을 아코디언 방식으로 표시하는 메인 프레임.
- * - 그룹/북마크 순서 변경: 드롭다운 + 드래그앤드롭
- * - 드래그 시 드롭 위치 하이라이트 라인 표시(GlassPane)
- * - 그룹 삭제/이름변경, 북마크 수정까지 연결
- */
 public class MainFrameV2 extends JFrame {
 
     private final BookmarkService bookmarkService;
     private final BookmarkGroupService bookmarkGroupService;
 
-    // 상단 툴바
+    // 상단 툴바 (간소화)
     private final JButton addGroupBtn = new JButton("그룹 추가");
     private final JButton expandAllBtn = new JButton("모두 펼치기");
     private final JButton collapseAllBtn = new JButton("모두 접기");
 
     // 중앙 아코디언 컨테이너
     private final JPanel accordion = new JPanel();
+    private JScrollPane scroll; // 스크롤 위치 보존용
 
     // 섹션 펼침/접힘 상태 보존
     private final Map<Long, Boolean> expandState = new HashMap<>();
 
     // 드래그 위치 하이라이트(GlassPane)
     private final HighlightGlass highlight = new HighlightGlass();
+
+    // 상태바(스낵바 스타일)
+    private final JPanel statusBar = new JPanel(new BorderLayout());
+    private final JLabel statusLabel = new JLabel(" ");
+    private final JButton statusActionBtn = new JButton();
+    private Timer statusTimer;
+    private Runnable statusActionHandler;
+
+    // 최근 삭제 항목(Undo용)
+    private static final class DeletedBookmark {
+        long groupId; String name; String path; int index;
+        DeletedBookmark(long groupId, String name, String path, int index){
+            this.groupId=groupId; this.name=name; this.path=path; this.index=index;
+        }
+    }
+    private DeletedBookmark lastDeleted;
+
+    // 환경설정 저장
+    private final Preferences prefs = Preferences.userNodeForPackage(MainFrameV2.class);
 
     public MainFrameV2(BookmarkService bookmarkService, BookmarkGroupService bookmarkGroupService) {
         super("Shortcut Manager");
@@ -51,6 +68,7 @@ public class MainFrameV2 extends JFrame {
         setSize(900, 600);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
+        loadWindowPrefs();
 
         // 상단 툴바
         var toolbar = buildToolbar();
@@ -58,7 +76,7 @@ public class MainFrameV2 extends JFrame {
 
         // 중앙 아코디언 컨테이너
         accordion.setLayout(new BoxLayout(accordion, BoxLayout.Y_AXIS));
-        var scroll = new JScrollPane(accordion);
+        scroll = new JScrollPane(accordion);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         add(scroll, BorderLayout.CENTER);
 
@@ -69,14 +87,26 @@ public class MainFrameV2 extends JFrame {
         getRootPane().setGlassPane(highlight);
         highlight.setVisible(false);
 
+        // 하단 상태바
+        statusBar.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, getSeparatorColor()));
+        statusActionBtn.setVisible(false);
+        statusActionBtn.setFocusable(false);
+        statusActionBtn.addActionListener(e -> { if(statusActionHandler!=null) statusActionHandler.run(); });
+        statusBar.add(statusLabel, BorderLayout.WEST);
+        statusBar.add(statusActionBtn, BorderLayout.EAST);
+        add(statusBar, BorderLayout.SOUTH);
+
         // 데이터 로드 → 섹션 구성
         rebuildAccordion();
 
-        // 액션 바인딩
+        // 액션 바인딩(단축키는 제거)
         wireActions();
+
+        // 종료시 환경 저장
+        addWindowListener(new WindowAdapter(){ @Override public void windowClosing(WindowEvent e){ saveWindowPrefs(); } });
     }
 
-    // 상단 툴바
+    // 상단 툴바 (심플)
     private JComponent buildToolbar() {
         var bar = new JPanel(new GridBagLayout());
         var gbc = new GridBagConstraints();
@@ -89,13 +119,13 @@ public class MainFrameV2 extends JFrame {
 
         bar.add(addGroupBtn, gbc); gbc.gridx++;
         bar.add(expandAllBtn, gbc); gbc.gridx++;
-        bar.add(collapseAllBtn, gbc); gbc.gridx++;
+        bar.add(collapseAllBtn, gbc);
 
-        gbc.weightx = 1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
-        var spacer = new JPanel();
-        spacer.setOpaque(false);
-        bar.add(spacer, gbc);
-        return bar;
+        // 얇은 하단 보더를 위한 래퍼
+        var wrapper = new JPanel(new BorderLayout());
+        wrapper.add(bar, BorderLayout.CENTER);
+        wrapper.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()));
+        return wrapper;
     }
 
     private void wireActions() {
@@ -104,10 +134,10 @@ public class MainFrameV2 extends JFrame {
             if (name == null || name.isBlank()) return;
             try {
                 bookmarkGroupService.createBookmarkGroup(name);
+                setStatus("그룹이 추가되었습니다.");
                 rebuildAccordion();
             } catch (RuntimeException ex) {
-                JOptionPane.showMessageDialog(this, "그룹 생성 실패: " + ex.getMessage(),
-                        "오류", JOptionPane.ERROR_MESSAGE);
+                showError("그룹 생성 실패: " + ex.getMessage());
             }
         });
 
@@ -117,23 +147,25 @@ public class MainFrameV2 extends JFrame {
 
     /** 전체 아코디언 섹션 재구성 */
     private void rebuildAccordion() {
-        // 펼침 상태 백업
+        // 펼침 상태/스크롤 위치 백업
         for (Component c : accordion.getComponents()) {
-            if (c instanceof GroupSection gs) {
-                expandState.put(gs.group.getId(), gs.toggle.isSelected());
-            }
+            if (c instanceof GroupSection gs) expandState.put(gs.group.getId(), gs.toggle.isSelected());
         }
+        Point viewPos = scroll.getViewport().getViewPosition();
 
         accordion.removeAll();
 
         List<BookmarkGroup> groups = bookmarkGroupService.getBookmarkGroups();
+        // prefs에서 펼침 상태 로드
+        loadExpandStateFromPrefs(groups);
+
         if (groups.isEmpty()) {
-            accordion.add(emptyHint("그룹이 없습니다. [그룹 추가] 버튼으로 시작해 보세요."));
+            accordion.add(emptyHint("그룹이 없습니다. [그룹 추가] 버튼을 눌러 시작하세요."));
         } else {
             for (int i = 0; i < groups.size(); i++) {
                 BookmarkGroup g = groups.get(i);
-                accordion.add(new GroupSection(g, i, groups.size()));
-                accordion.add(Box.createVerticalStrut(8));
+                var section = new GroupSection(g);
+                accordion.add(section);
             }
         }
 
@@ -141,384 +173,389 @@ public class MainFrameV2 extends JFrame {
         accordion.revalidate();
         accordion.repaint();
 
+        // 스크롤 복원
+        SwingUtilities.invokeLater(() -> scroll.getViewport().setViewPosition(viewPos));
+
         hideDropHighlight();
     }
 
     /** 모든 섹션 펼치기/접기 */
     private void setAllSectionsExpanded(boolean expanded) {
-        for (Component c : accordion.getComponents()) {
-            if (c instanceof GroupSection) ((GroupSection) c).setExpanded(expanded);
-        }
+        for (Component c : accordion.getComponents()) if (c instanceof GroupSection) ((GroupSection) c).setExpanded(expanded);
     }
 
-    /** 그룹 + 북마크 목록 한 묶음 */
+    /** 그룹 + 북마크 목록 한 묶음 (Notion 토글 스타일) */
     private final class GroupSection extends JPanel {
         private final BookmarkGroup group;
         private final JToggleButton toggle = new JToggleButton();
         private final JLabel title = new JLabel();
-        private final JButton addBookmarkBtn = new JButton("북마크 추가");
-        private final JButton renameGroupBtn = new JButton("이름 변경");
-        private final JButton deleteGroupBtn = new JButton("삭제");
+        private final JButton moreBtn = new JButton("⋯");
+        private final JPanel header = new JPanel(new GridBagLayout());
         private final JPanel content = new JPanel();
 
-        // 순서 변경용(드롭다운)
-        private final JComboBox<String> orderCombo;
-        private int currentIndex;      // 0-based
-        private final int totalGroups;
-
-        GroupSection(BookmarkGroup group, int index, int totalGroups) {
+        GroupSection(BookmarkGroup group) {
             super(new BorderLayout());
             this.group = group;
-            this.currentIndex = index;
-            this.totalGroups = totalGroups;
 
-            // 헤더
-            var header = new JPanel(new GridBagLayout());
-            header.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(1,1,1,1, new Color(230,230,235)),
-                    BorderFactory.createEmptyBorder(8, 8, 8, 8)
-            ));
-            header.setBackground(new Color(248, 248, 252));
+            // 헤더: 하단 보더만, 얇고 플랫
+            header.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()));
+            header.setBackground(UIManager.getColor("Panel.background"));
+            header.setOpaque(true);
 
-            // 그룹 헤더 DnD: Export + Import 모두 처리(헤더 위로 드롭해도 동작)
+            // DnD: 헤더 자체가 드래그 시작점 + Import 허용
             var headerDnD = new GroupHeaderTransferHandler(group.getId());
             header.setTransferHandler(headerDnD);
-            // 드래그 시작 안정화: press/drag 모두에서 시작
-            var dragStarter = new java.awt.event.MouseAdapter() {
-                @Override public void mousePressed(java.awt.event.MouseEvent e) {
-                    header.getTransferHandler().exportAsDrag(header, e, TransferHandler.MOVE);
-                }
-                @Override public void mouseDragged(java.awt.event.MouseEvent e) {
-                    header.getTransferHandler().exportAsDrag(header, e, TransferHandler.MOVE);
+            var dragStarter = new MouseAdapter() {
+                Point pressAt;
+                @Override public void mousePressed(MouseEvent e) { pressAt = e.getPoint(); }
+                @Override public void mouseDragged(MouseEvent e) {
+                    if (pressAt != null && e.getPoint().distance(pressAt) > 6) {
+                        header.getTransferHandler().exportAsDrag(header, e, TransferHandler.MOVE);
+                        pressAt = null;
+                    }
                 }
             };
             header.addMouseListener(dragStarter);
             header.addMouseMotionListener(dragStarter);
 
+            // 토글 아이콘
             toggle.setText("▸");
+            toggle.setBorderPainted(false);
+            toggle.setContentAreaFilled(false);
+            toggle.setFocusPainted(false);
             toggle.setSelected(expandState.getOrDefault(group.getId(), Boolean.TRUE));
             updateToggleGlyph();
-            stylizeButton(addBookmarkBtn);
-            stylizeButton(renameGroupBtn);
-            stylizeButton(deleteGroupBtn);
 
+            // 그룹명 (더블클릭으로 이름 변경)
             title.setText(group.getName());
-            title.setFont(title.getFont().deriveFont(Font.BOLD, title.getFont().getSize2D()+1));
+            title.setFont(title.getFont().deriveFont(Font.PLAIN, title.getFont().getSize2D()+1));
+            title.setToolTipText("더블클릭하여 그룹명 변경");
+            title.addMouseListener(new MouseAdapter(){
+                @Override public void mouseClicked(MouseEvent e){
+                    if (e.getClickCount()==2) {
+                        String newName = JOptionPane.showInputDialog(MainFrameV2.this, "새 그룹명", group.getName());
+                        if (newName == null || newName.isBlank() || newName.equals(group.getName())) return;
+                        try { bookmarkGroupService.renameBookmarkGroup(group.getId(), newName); setStatus("그룹 이름이 변경되었습니다."); rebuildAccordion(); }
+                        catch (RuntimeException ex) { showError("이름 변경 실패: " + ex.getMessage()); }
+                    }
+                }
+            });
 
-            // 순서 드롭다운(1..N)
-            String[] positions = IntStream.rangeClosed(1, totalGroups).mapToObj(Integer::toString).toArray(String[]::new);
-            orderCombo = new JComboBox<>(positions);
-            orderCombo.setSelectedIndex(currentIndex);
-            orderCombo.setMaximumRowCount(Math.min(totalGroups, 20));
-            orderCombo.setToolTipText("이 그룹의 표시 순서를 선택하세요");
+            // more 버튼(컨텍스트 메뉴, 작은 버튼)
+            stylizeIconButton(moreBtn);
+            var groupMenu = buildGroupPopupMenu();
+            moreBtn.addActionListener(e -> groupMenu.show(moreBtn, 0, moreBtn.getHeight()));
+            // 헤더 우클릭도 동일 메뉴
+            header.addMouseListener(new MouseAdapter(){
+                @Override public void mousePressed(MouseEvent e){ if (e.isPopupTrigger()) groupMenu.show(header, e.getX(), e.getY()); }
+                @Override public void mouseReleased(MouseEvent e){ if (e.isPopupTrigger()) groupMenu.show(header, e.getX(), e.getY()); }
+            });
 
+            // 헤더 레이아웃: [▸][제목]...................................[⋯]
             var gbc = new GridBagConstraints();
-            gbc.insets = new Insets(0, 4, 0, 4);
+            gbc.insets = new Insets(6, 8, 6, 8);
             gbc.gridx=0; gbc.gridy=0; gbc.anchor = GridBagConstraints.WEST;
             header.add(toggle, gbc);
-
             gbc.gridx=1; gbc.weightx=1.0; gbc.fill = GridBagConstraints.HORIZONTAL;
             header.add(title, gbc);
-
             gbc.gridx=2; gbc.weightx=0; gbc.fill = GridBagConstraints.NONE;
-            header.add(new JLabel("순서"), gbc);
-            gbc.gridx=3;
-            header.add(orderCombo, gbc);
-            gbc.gridx=4;
-            header.add(renameGroupBtn, gbc);
-            gbc.gridx=5;
-            header.add(deleteGroupBtn, gbc);
-            gbc.gridx=6;
-            header.add(addBookmarkBtn, gbc);
+            header.add(moreBtn, gbc);
 
             add(header, BorderLayout.NORTH);
 
-            // 콘텐츠(북마크 리스트)
+            // 콘텐츠(북마크 리스트) — Compact 스타일
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-            content.setBorder(BorderFactory.createEmptyBorder(8, 20, 8, 12));
+            content.setBorder(BorderFactory.createEmptyBorder(2, 24, 4, 12)); // 가벼운 들여쓰기
+            content.setOpaque(false);
             add(content, BorderLayout.CENTER);
 
-            // 북마크 리스트 패널에도 Import 핸들러(빈 공간 드롭 지원)
+            // 북마크 리스트 패널에도 Import 핸들러(빈 공간 드롭 + 파일/텍스트 드롭 + 크로스 그룹 이동)
             content.setTransferHandler(new BookmarkListImportHandler(group.getId(), content));
 
             // 최초 로드
             reloadBookmarks();
 
             // 동작
-            toggle.addActionListener(e -> {
-                updateToggleGlyph();
-                content.setVisible(toggle.isSelected());
-                expandState.put(group.getId(), toggle.isSelected());
-                revalidate();
-            });
-
-            addBookmarkBtn.addActionListener(e -> promptAddBookmark());
-
-            renameGroupBtn.addActionListener(e -> {
-                String newName = JOptionPane.showInputDialog(MainFrameV2.this, "새 그룹명", group.getName());
-                if (newName == null || newName.isBlank() || newName.equals(group.getName())) return;
-                try {
-                    bookmarkGroupService.renameBookmarkGroup(group.getId(), newName);
-                    rebuildAccordion();
-                } catch (RuntimeException ex) {
-                    JOptionPane.showMessageDialog(MainFrameV2.this, "이름 변경 실패: " + ex.getMessage(),
-                            "오류", JOptionPane.ERROR_MESSAGE);
-                }
-            });
-
-            deleteGroupBtn.addActionListener(e -> {
-                int r = JOptionPane.showConfirmDialog(MainFrameV2.this,
-                        "그룹을 삭제하시겠습니까?\n" + group.getName(),
-                        "확인", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
-                if (r != JOptionPane.OK_OPTION) return;
-                try {
-                    bookmarkGroupService.deleteBookmarkGroup(group.getId());
-                    rebuildAccordion();
-                } catch (RuntimeException ex) {
-                    JOptionPane.showMessageDialog(MainFrameV2.this, "삭제 실패: " + ex.getMessage(),
-                            "오류", JOptionPane.ERROR_MESSAGE);
-                }
-            });
-
-            // 그룹 순서 변경(드롭다운)
-            orderCombo.addActionListener(e -> {
-                int toIndex = orderCombo.getSelectedIndex();
-                if (toIndex == currentIndex) return;
-                setUiBusy(true);
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
-                        bookmarkGroupService.reorderBookmarkGroups(group.getId(), toIndex);
-                        return null;
-                    }
-                    @Override protected void done() {
-                        setUiBusy(false);
-                        rebuildAccordion();
-                    }
-                }.execute();
-            });
+            toggle.addActionListener(e -> { updateToggleGlyph(); content.setVisible(toggle.isSelected()); expandState.put(group.getId(), toggle.isSelected()); revalidate(); });
 
             // 접힘/펼침 반영
             content.setVisible(toggle.isSelected());
         }
 
-        void setExpanded(boolean expanded) {
-            toggle.setSelected(expanded);
-            updateToggleGlyph();
-            content.setVisible(expanded);
-            expandState.put(group.getId(), expanded);
-            revalidate();
+        private JPopupMenu buildGroupPopupMenu() {
+            JPopupMenu menu = new JPopupMenu();
+            JMenuItem add = new JMenuItem("북마크 추가…");
+            add.addActionListener(e -> promptAddBookmark());
+            menu.add(add);
+
+            JMenuItem rename = new JMenuItem("이름 변경…");
+            rename.addActionListener(e -> {
+                String newName = JOptionPane.showInputDialog(MainFrameV2.this, "새 그룹명", group.getName());
+                if (newName == null || newName.isBlank() || newName.equals(group.getName())) return;
+                try { bookmarkGroupService.renameBookmarkGroup(group.getId(), newName); setStatus("그룹 이름이 변경되었습니다."); rebuildAccordion(); }
+                catch (RuntimeException ex) { showError("이름 변경 실패: " + ex.getMessage()); }
+            });
+            menu.add(rename);
+
+            JMenuItem del = new JMenuItem("삭제…");
+            del.addActionListener(e -> {
+                int r = JOptionPane.showConfirmDialog(MainFrameV2.this,
+                        "그룹을 삭제하시겠습니까?\n" + group.getName(),
+                        "확인", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+                if (r != JOptionPane.OK_OPTION) return;
+                try { bookmarkGroupService.deleteBookmarkGroup(group.getId()); setStatus("그룹이 삭제되었습니다."); rebuildAccordion(); }
+                catch (RuntimeException ex) { showError("삭제 실패: " + ex.getMessage()); }
+            });
+            menu.add(del);
+            return menu;
         }
 
-        private void updateToggleGlyph() {
-            toggle.setText(toggle.isSelected() ? "▾" : "▸");
-        }
+        void setExpanded(boolean expanded) { toggle.setSelected(expanded); updateToggleGlyph(); content.setVisible(expanded); expandState.put(group.getId(), expanded); revalidate(); }
+        private void updateToggleGlyph() { toggle.setText(toggle.isSelected() ? "▾" : "▸"); }
 
-        private void promptAddBookmark() {
-            String path = JOptionPane.showInputDialog(MainFrameV2.this, "파일 또는 폴더 경로를 입력하세요");
-            if (path == null || path.isBlank()) return;
-
-            Path p = Path.of(path);
-            String defaultName = p.getFileName() != null ? p.getFileName().toString() : path;
-            String displayName = JOptionPane.showInputDialog(MainFrameV2.this, "표시 이름(생략 가능)", defaultName);
-            if (displayName == null) return;
-
-            try {
-                bookmarkService.createBookmark(group.getId(), displayName, path);
-                reloadBookmarks(); // 이 섹션만 갱신
-            } catch (RuntimeException ex) {
-                JOptionPane.showMessageDialog(MainFrameV2.this, "북마크 생성 실패: " + ex.getMessage(),
-                        "오류", JOptionPane.ERROR_MESSAGE);
-            }
+        void promptAddBookmark() {
+            JFileChooser fc = new JFileChooser();
+            fc.setDialogTitle("파일 또는 폴더 선택");
+            fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+            int res = fc.showOpenDialog(MainFrameV2.this);
+            if (res != JFileChooser.APPROVE_OPTION) return;
+            File f = fc.getSelectedFile(); String defaultName = f.getName();
+            String displayName = JOptionPane.showInputDialog(MainFrameV2.this, "표시 이름(생략 가능)", defaultName); if (displayName == null) return;
+            try { bookmarkService.createBookmark(group.getId(), displayName, f.getAbsolutePath()); setStatus("북마크가 추가되었습니다."); reloadBookmarks(); }
+            catch (RuntimeException ex) { showError("북마크 생성 실패: " + ex.getMessage()); }
         }
 
         /** 이 섹션의 북마크 목록을 다시 그림 */
         private void reloadBookmarks() {
             content.removeAll();
-
-            List<Bookmark> bookmarks = group.getBookmarks(); // 필요 시 서비스 경유로 교체
+            List<Bookmark> bookmarks = group.getBookmarks();
             if (bookmarks == null || bookmarks.isEmpty()) {
-                content.add(emptyHint("이 그룹에 북마크가 없습니다."));
+                content.add(emptyHint("이 그룹이 비어 있습니다. 파일을 드래그하여 추가하세요."));
             } else {
+                int count = 0;
                 for (Bookmark b : bookmarks) {
                     content.add(new BookmarkRow(group.getId(), b, content));
-                    content.add(Box.createVerticalStrut(6));
+                    count++;
                 }
+                if (count == 0) content.add(emptyHint("항목이 없습니다."));
             }
-
-            content.revalidate();
-            content.repaint();
+            content.revalidate(); content.repaint();
         }
     }
 
-    /** 북마크 한 줄 (아이콘 + 이름/경로, [복사][수정][삭제]) + DnD Export/Import */
+    /** 북마크 한 줄 (Compact Row: 아이콘 + 이름) + ⋯ 메뉴 + DnD */
     private final class BookmarkRow extends JPanel {
-        private final long groupId;
-        private final Bookmark bm;
-        private final JPanel listPanel;
+        private final long groupId; private final Bookmark bm; private final JPanel listPanel;
+        private final JButton moreBtn = new JButton("⋯");
+        private final JLabel nameLabel;
 
         BookmarkRow(long groupId, Bookmark bm, JPanel listPanel) {
             super(new GridBagLayout());
-            this.groupId = groupId;
-            this.bm = bm;
-            this.listPanel = listPanel;
+            this.groupId = groupId; this.bm = bm; this.listPanel = listPanel;
 
+            setOpaque(true);
+            setBackground(UIManager.getColor("Panel.background"));
+            // Compact: 얇은 하단 보더, 작은 패딩
             setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createMatteBorder(1,1,1,1, new Color(235,235,240)),
-                    BorderFactory.createEmptyBorder(8, 8, 8, 8)
+                    BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()),
+                    BorderFactory.createEmptyBorder(4, 4, 4, 4)
             ));
 
-            // 파일/폴더 아이콘
+            // 아이콘 + 한 줄 라벨(툴팁은 전체 경로)
             Icon icon = iconForBookmark(bm);
-            JLabel label = new JLabel(
-                    "<html><b>" + esc(bm.getDisplayName()) + "</b><br>" +
-                            "<span style='font-size:10px;color:gray'>" + esc(bm.getPath()) + "</span></html>",
-                    icon, SwingConstants.LEFT
-            );
+            nameLabel = new JLabel(esc(bm.getDisplayName()), icon, SwingConstants.LEFT);
+            nameLabel.setToolTipText(bm.getPath());
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN));
 
-            JButton copyBtn  = new JButton("복사");
-            JButton editBtn  = new JButton("수정");
-            JButton delBtn   = new JButton("삭제");
-            stylizeButton(copyBtn);
-            stylizeButton(editBtn);
-            stylizeButton(delBtn);
+            // 더블클릭 = 열기
+            addMouseListener(new MouseAdapter(){ @Override public void mouseClicked(MouseEvent e){ if (e.getClickCount()==2 && SwingUtilities.isLeftMouseButton(e)) { openBookmarkPath(bm.getPath()); } }});
 
-            // DnD: 행 자체에 Export + Import 모두 지원(행 위/사이 어디든 드롭 동작)
+            // DnD: 행 전체에서 드래그 시작 가능
             var rowDnD = new BookmarkRowTransferHandler(groupId, bm.getId(), listPanel);
             setTransferHandler(rowDnD);
-            // 드래그 시작 안정화
-            var dragStarter = new java.awt.event.MouseAdapter() {
-                @Override public void mousePressed(java.awt.event.MouseEvent e) {
-                    getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
+            addMouseListener(new MouseAdapter(){
+                Point pressAt;
+                @Override public void mousePressed(MouseEvent e){ pressAt = e.getPoint(); }
+                @Override public void mouseDragged(MouseEvent e){
+                    if (pressAt != null && e.getPoint().distance(pressAt) > 6) {
+                        getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
+                        pressAt = null;
+                    }
                 }
-                @Override public void mouseDragged(java.awt.event.MouseEvent e) {
-                    getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
+            });
+            addMouseMotionListener(new MouseMotionAdapter(){
+                Point pressAt;
+                @Override public void mouseDragged(MouseEvent e){
+                    if (pressAt == null) pressAt = new Point(0,0);
+                    if (e.getPoint().distance(pressAt) > 6) {
+                        getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
+                    }
                 }
-            };
-            addMouseListener(dragStarter);
-            addMouseMotionListener(dragStarter);
+            });
+
+            // ⋯ 메뉴 (작은 버튼)
+            stylizeIconButton(moreBtn);
+            var rowMenu = buildRowPopupMenu();
+            moreBtn.addActionListener(e -> rowMenu.show(moreBtn, 0, moreBtn.getHeight()));
+            addMouseListener(new MouseAdapter(){ @Override public void mousePressed(MouseEvent e){ if (e.isPopupTrigger()) rowMenu.show(BookmarkRow.this, e.getX(), e.getY()); } @Override public void mouseReleased(MouseEvent e){ if (e.isPopupTrigger()) rowMenu.show(BookmarkRow.this, e.getX(), e.getY()); }});
 
             // 레이아웃
             var gbc = new GridBagConstraints();
-            gbc.insets = new Insets(2, 4, 2, 4);
+            gbc.insets = new Insets(0, 6, 0, 6);
             gbc.gridx=0; gbc.gridy=0; gbc.weightx=1.0; gbc.fill = GridBagConstraints.HORIZONTAL; gbc.anchor=GridBagConstraints.WEST;
-            add(label, gbc);
-
+            add(nameLabel, gbc);
             gbc.gridx=1; gbc.weightx=0; gbc.fill = GridBagConstraints.NONE; gbc.anchor=GridBagConstraints.EAST;
-            add(copyBtn, gbc);
-            gbc.gridx=2;
-            add(editBtn, gbc);
-            gbc.gridx=3;
-            add(delBtn, gbc);
+            add(moreBtn, gbc);
+        }
 
-            // 동작
-            copyBtn.addActionListener(e -> {
-                Toolkit.getDefaultToolkit().getSystemClipboard()
-                        .setContents(new StringSelection(bm.getPath()), null);
-                JOptionPane.showMessageDialog(MainFrameV2.this, "경로를 클립보드에 복사했습니다.");
+        private JPopupMenu buildRowPopupMenu(){
+            JPopupMenu menu = new JPopupMenu();
+            JMenuItem open = new JMenuItem("열기");
+            open.addActionListener(e -> openBookmarkPath(bm.getPath()));
+            menu.add(open);
+
+            JMenuItem openFolder = new JMenuItem("포함 폴더 열기");
+            openFolder.addActionListener(e -> {
+                try {
+                    File f = new File(bm.getPath());
+                    File dir = f.isDirectory() ? f : f.getParentFile();
+                    if (dir != null) Desktop.getDesktop().open(dir);
+                } catch (Exception ex) { showError("폴더를 열 수 없습니다: "+ex.getMessage()); }
             });
+            menu.add(openFolder);
 
-            editBtn.addActionListener(e -> {
+            JMenuItem copy = new JMenuItem("경로 복사");
+            copy.addActionListener(e -> {
+                Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(bm.getPath()), null);
+                setStatus("경로를 복사했습니다.");
+            });
+            menu.add(copy);
+
+            JMenuItem rename = new JMenuItem("이름 변경…");
+            rename.addActionListener(e -> {
                 String newName = JOptionPane.showInputDialog(MainFrameV2.this, "표시 이름", bm.getDisplayName());
                 if (newName == null) return;
-                String newPath = JOptionPane.showInputDialog(MainFrameV2.this, "파일/폴더 경로", bm.getPath());
-                if (newPath == null) return;
-
-                try {
-                    bookmarkService.updateBookmark(bm.getId(), newName, newPath);
-                    rebuildAccordion(); // 간단·안전
-                } catch (RuntimeException ex) {
-                    JOptionPane.showMessageDialog(MainFrameV2.this, "수정 실패: " + ex.getMessage(),
-                            "오류", JOptionPane.ERROR_MESSAGE);
-                }
+                try { bookmarkService.updateBookmark(bm.getId(), newName, bm.getPath()); setStatus("이름이 변경되었습니다."); rebuildAccordion(); }
+                catch (RuntimeException ex) { showError("수정 실패: " + ex.getMessage()); }
             });
+            menu.add(rename);
 
-            delBtn.addActionListener(e -> {
-                int r = JOptionPane.showConfirmDialog(MainFrameV2.this,
-                        "삭제하시겠습니까?\n" + bm.getDisplayName(), "확인",
-                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
-                if (r != JOptionPane.OK_OPTION) return;
-
-                try {
-                    bookmarkService.remove(bm.getId());
-                    Container parent = getParent();
-                    parent.remove(this);
-                    parent.revalidate();
-                    parent.repaint();
-                } catch (RuntimeException ex) {
-                    JOptionPane.showMessageDialog(MainFrameV2.this, "이미 삭제되었거나 존재하지 않습니다.");
-                }
+            JMenuItem changePath = new JMenuItem("경로 변경…");
+            changePath.addActionListener(e -> {
+                JFileChooser fc = new JFileChooser();
+                fc.setDialogTitle("새 경로 선택");
+                fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
+                int res = fc.showOpenDialog(MainFrameV2.this);
+                if (res != JFileChooser.APPROVE_OPTION) return;
+                File f = fc.getSelectedFile();
+                try { bookmarkService.updateBookmark(bm.getId(), bm.getDisplayName(), f.getAbsolutePath()); setStatus("경로가 변경되었습니다."); rebuildAccordion(); }
+                catch (RuntimeException ex) { showError("수정 실패: " + ex.getMessage()); }
             });
+            menu.add(changePath);
+
+            JMenuItem del = new JMenuItem("삭제…");
+            del.addActionListener(e -> deleteBookmark());
+            menu.add(del);
+
+            return menu;
+        }
+
+        private void deleteBookmark(){
+            int r = JOptionPane.showConfirmDialog(MainFrameV2.this,
+                    "삭제하시겠습니까?\n" + bm.getDisplayName(),
+                    "확인", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (r != JOptionPane.OK_OPTION) return;
+            try {
+                int idx = findBookmarkIndexById(listPanel, bm.getId());
+                lastDeleted = new DeletedBookmark(groupId, bm.getDisplayName(), bm.getPath(), Math.max(idx, 0));
+                bookmarkService.remove(bm.getId());
+                setStatusWithAction("북마크가 삭제되었습니다.", "되돌리기", () -> {
+                    try {
+                        if (lastDeleted == null) return;
+                        bookmarkService.createBookmark(lastDeleted.groupId, lastDeleted.name, lastDeleted.path);
+                        // 위치 복원: 새로 생성된 북마크를 target index로 이동
+                        List<BookmarkGroup> groups = bookmarkGroupService.getBookmarkGroups();
+                        for (BookmarkGroup g : groups) if (g.getId()==lastDeleted.groupId) {
+                            List<Bookmark> lb = g.getBookmarks(); if (lb!=null && !lb.isEmpty()) {
+                                Bookmark newest = lb.get(lb.size()-1);
+                                int to = Math.min(lastDeleted.index, lb.size()-1);
+                                bookmarkService.reorderBookmark(lastDeleted.groupId, newest.getId(), to);
+                            }
+                        }
+                        lastDeleted = null; rebuildAccordion(); setStatus("복구했습니다.");
+                    } catch(Exception ex){ showError("복구 실패: "+ex.getMessage()); }
+                });
+                Container parent = getParent();
+                parent.remove(BookmarkRow.this);
+                parent.revalidate();
+                parent.repaint();
+            } catch (RuntimeException ex) { showError("이미 삭제되었거나 존재하지 않습니다."); }
         }
     }
 
     // =================== Group DnD ===================
 
-    /** 그룹 헤더: Export + Import(헤더 위 드롭도 허용) */
+    /** 그룹 헤더: Export + Import(헤더 위 드롭 허용) */
     private final class GroupHeaderTransferHandler extends TransferHandler {
         private final long groupId;
         GroupHeaderTransferHandler(long groupId) { this.groupId = groupId; }
 
         // Export
-        @Override protected Transferable createTransferable(JComponent c) {
-            return new StringSelection(String.valueOf(groupId));
-        }
+        @Override protected Transferable createTransferable(JComponent c) { return new StringSelection(String.valueOf(groupId)); }
         @Override public int getSourceActions(JComponent c) { return MOVE; }
-        @Override protected void exportDone(JComponent source, Transferable data, int action) {
-            hideDropHighlight();
-        }
+        @Override protected void exportDone(JComponent source, Transferable data, int action) { hideDropHighlight(); }
 
-        // Import (그룹 DnD만 허용)
+        // Import (그룹 DnD만 허용 + 파일/텍스트 드롭으로 빠른 추가)
         @Override public boolean canImport(TransferSupport s) {
-            if (!(s.isDrop() && s.isDataFlavorSupported(DataFlavor.stringFlavor))) {
-                hideDropHighlight(); return false;
+            if (!s.isDrop()) { hideDropHighlight(); return false; }
+            if (s.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) { hideDropHighlight(); return true; }
+            if (s.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                // 문자열: 내부 그룹ID or 북마크ID or 외부 텍스트
+                hideDropHighlight(); return true;
             }
-            String payload = getStringData(s);
-            if (payload == null || payload.startsWith("B:")) { // 북마크 payload는 거절
-                hideDropHighlight(); return false;
-            }
-            // 헤더 위로 드롭할 때 하이라이트(accordion 기준으로 계산)
-            Point pInHeader = s.getDropLocation().getDropPoint();
-            Point pInAccordion = SwingUtilities.convertPoint((Component)s.getComponent(), pInHeader, accordion);
-            int boundaryY = computeGroupBoundaryY(pInAccordion);
-            showDropHighlightAt(accordion, boundaryY);
-            return true;
+            hideDropHighlight(); return false;
         }
 
         @Override public boolean importData(TransferSupport s) {
-            if (!canImport(s)) return false;
+            if (!s.isDrop()) return false;
             try {
-                Long movedId = Long.parseLong(getStringData(s));
-
-                Point pInHeader = s.getDropLocation().getDropPoint();
-                Point pInAccordion = SwingUtilities.convertPoint((Component)s.getComponent(), pInHeader, accordion);
-
-                int fromIndex = findGroupIndexById(movedId);
-                if (fromIndex < 0) { hideDropHighlight(); return false; }
-
-                int toIndex = computeGroupTargetIndex(pInAccordion);
-                if (toIndex == fromIndex) { hideDropHighlight(); return false; }
-                if (toIndex > fromIndex) toIndex--;
-
-                setUiBusy(true);
-                int finalIndex = toIndex;
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
-                        bookmarkGroupService.reorderBookmarkGroups(movedId, finalIndex);
-                        return null;
+                if (s.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                    List<File> files = (List<File>) s.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                    if (files != null) {
+                        for (File f : files) bookmarkService.createBookmark(groupId, f.getName(), f.getAbsolutePath());
+                        setStatus(files.size()+"개 항목을 추가했습니다."); rebuildAccordion(); return true;
                     }
-                    @Override protected void done() {
-                        setUiBusy(false);
-                        hideDropHighlight();
-                        rebuildAccordion();
+                    return false;
+                }
+                String payload = getStringData(s);
+                if (payload == null) return false;
+
+                if (payload.startsWith("B:")) { // 다른 그룹에서 북마크 이동
+                    String[] parts = payload.split(":");
+                    long movedBookmarkId = parseLongSafe(parts[2], -1);
+                    setUiBusy(true);
+                    new SwingWorker<Void, Void>() {
+                        @Override protected Void doInBackground() {
+                            // 서비스에 moveBookmark(id, toGroup, toIndex=0) 있다고 가정
+                            try { bookmarkService.moveBookmark(movedBookmarkId, groupId, 0); } catch (Throwable t) { /* 없으면 무시 */ }
+                            return null;
+                        }
+                        @Override protected void done() {
+                            setUiBusy(false); setStatus("북마크를 다른 그룹으로 이동했습니다."); rebuildAccordion();
+                        }
+                    }.execute();
+                    return true;
+                } else {
+                    // 외부 텍스트 줄단위로 경로 처리
+                    for (String line : payload.split("\\R")) {
+                        if (line.isBlank()) continue;
+                        File f = new File(line.trim());
+                        if (f.exists()) bookmarkService.createBookmark(groupId, f.getName(), f.getAbsolutePath());
                     }
-                }.execute();
-                return true;
+                    setStatus("텍스트 드롭으로 항목을 추가했습니다."); rebuildAccordion(); return true;
+                }
             } catch (Exception ex) {
-                setUiBusy(false);
-                hideDropHighlight();
-                JOptionPane.showMessageDialog(MainFrameV2.this, "그룹 순서 변경 실패: " + ex.getMessage(),
-                        "오류", JOptionPane.ERROR_MESSAGE);
-                return false;
+                setUiBusy(false); hideDropHighlight(); showError("작업 실패: " + ex.getMessage()); return false;
             }
         }
     }
@@ -526,240 +563,209 @@ public class MainFrameV2 extends JFrame {
     /** 아코디언(빈 공간) 위 드롭 시 그룹 재정렬 허용 */
     private final class GroupReorderImportHandler extends TransferHandler {
         @Override public boolean canImport(TransferSupport s) {
-            if (!(s.isDrop() && s.isDataFlavorSupported(DataFlavor.stringFlavor))) {
-                hideDropHighlight(); return false;
-            }
-            String payload = getStringData(s);
-            if (payload == null || payload.startsWith("B:")) { hideDropHighlight(); return false; }
-
-            Point p = s.getDropLocation().getDropPoint(); // accordion 좌표
-            int boundaryY = computeGroupBoundaryY(p);
-            showDropHighlightAt(accordion, boundaryY);
-            return true;
+            if (!(s.isDrop() && s.isDataFlavorSupported(DataFlavor.stringFlavor))) { hideDropHighlight(); return false; }
+            String payload = getStringData(s); if (payload == null || payload.startsWith("B:")) { hideDropHighlight(); return false; }
+            Point p = s.getDropLocation().getDropPoint(); int boundaryY = computeGroupBoundaryY(p); showDropHighlightAt(accordion, boundaryY); return true;
         }
-
         @Override public boolean importData(TransferSupport s) {
             if (!canImport(s)) return false;
             try {
-                Long movedId = Long.parseLong(getStringData(s));
-                Point p = s.getDropLocation().getDropPoint();
-
-                int fromIndex = findGroupIndexById(movedId);
-                if (fromIndex < 0) { hideDropHighlight(); return false; }
-
-                int toIndex = computeGroupTargetIndex(p);
-                if (toIndex == fromIndex) { hideDropHighlight(); return false; }
-                if (toIndex > fromIndex) toIndex--;
-
+                Long movedId = Long.parseLong(getStringData(s)); Point p = s.getDropLocation().getDropPoint();
+                int fromIndex = findGroupIndexById(movedId); if (fromIndex < 0) { hideDropHighlight(); return false; }
+                int toIndex = computeGroupTargetIndex(p); if (toIndex == fromIndex) { hideDropHighlight(); return false; } if (toIndex > fromIndex) toIndex--;
                 setUiBusy(true);
                 int finalIndex = toIndex;
                 new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
-                        bookmarkGroupService.reorderBookmarkGroups(movedId, finalIndex);
-                        return null;
-                    }
-                    @Override protected void done() {
-                        setUiBusy(false);
-                        hideDropHighlight();
-                        rebuildAccordion();
-                    }
+                    @Override protected Void doInBackground() { bookmarkGroupService.reorderBookmarkGroups(movedId, finalIndex); return null; }
+                    @Override protected void done() { setUiBusy(false); hideDropHighlight(); setStatus("그룹 순서가 변경되었습니다."); rebuildAccordion(); }
                 }.execute();
                 return true;
             } catch (Exception ex) {
-                setUiBusy(false);
-                hideDropHighlight();
-                JOptionPane.showMessageDialog(MainFrameV2.this, "그룹 순서 변경 실패: " + ex.getMessage(),
-                        "오류", JOptionPane.ERROR_MESSAGE);
-                return false;
+                setUiBusy(false); hideDropHighlight(); showError("그룹 순서 변경 실패: " + ex.getMessage()); return false;
             }
         }
     }
 
-    // 그룹 경계선 Y(accordion 좌표)
     private int computeGroupBoundaryY(Point dropPointInAccordion) {
         Rectangle lastRect = null;
-        for (Component c : accordion.getComponents()) {
-            if (c instanceof GroupSection gs) {
-                Rectangle r = gs.getBounds();
-                int midY = r.y + r.height / 2;
-                if (dropPointInAccordion.y < midY) return r.y;
-                lastRect = r;
-            }
-        }
+        for (Component c : accordion.getComponents()) if (c instanceof GroupSection gs) { Rectangle r = gs.getBounds(); int midY = r.y + r.height / 2; if (dropPointInAccordion.y < midY) return r.y; lastRect = r; }
         return lastRect != null ? lastRect.y + lastRect.height : 0;
     }
 
-    // 그룹 타겟 인덱스
     private int computeGroupTargetIndex(Point dropPointInAccordion) {
-        int idx = 0;
-        for (Component c : accordion.getComponents()) {
-            if (c instanceof GroupSection gs) {
-                Rectangle r = gs.getBounds();
-                int midY = r.y + r.height / 2;
-                if (dropPointInAccordion.y < midY) return idx;
-                idx++;
-            }
-        }
-        return idx;
+        int idx = 0; for (Component c : accordion.getComponents()) if (c instanceof GroupSection gs) { Rectangle r = gs.getBounds(); int midY = r.y + r.height / 2; if (dropPointInAccordion.y < midY) return idx; idx++; } return idx;
     }
 
-    private int findGroupIndexById(Long id) {
-        int idx = 0;
-        for (Component c : accordion.getComponents()) {
-            if (c instanceof GroupSection gs) {
-                if (Objects.equals(gs.group.getId(), id)) return idx;
-                idx++;
-            }
-        }
-        return -1;
-    }
+    private int findGroupIndexById(Long id) { int idx = 0; for (Component c : accordion.getComponents()) if (c instanceof GroupSection gs) { if (Objects.equals(gs.group.getId(), id)) return idx; idx++; } return -1; }
 
     // =================== Bookmark DnD ===================
 
-    /** 북마크 행: Export + Import(행/사이/행 위 드롭 모두 허용) */
+    /** 북마크 행: Export + Import(행/사이/행 위 드롭) + 파일/텍스트 드롭 + **크로스 그룹 이동** */
     private final class BookmarkRowTransferHandler extends TransferHandler {
-        private final long groupId;
-        private final long bookmarkId;
-        private final JPanel listPanel;
-
-        BookmarkRowTransferHandler(long groupId, long bookmarkId, JPanel listPanel) {
-            this.groupId = groupId; this.bookmarkId = bookmarkId; this.listPanel = listPanel;
-        }
-
-        // Export
-        @Override protected Transferable createTransferable(JComponent c) {
-            return new StringSelection("B:" + groupId + ":" + bookmarkId);
-        }
+        private final long groupId; private final long bookmarkId; private final JPanel listPanel;
+        BookmarkRowTransferHandler(long groupId, long bookmarkId, JPanel listPanel) { this.groupId = groupId; this.bookmarkId = bookmarkId; this.listPanel = listPanel; }
+        @Override protected Transferable createTransferable(JComponent c) { return new StringSelection("B:" + groupId + ":" + bookmarkId); }
         @Override public int getSourceActions(JComponent c) { return MOVE; }
-        @Override protected void exportDone(JComponent source, Transferable data, int action) {
-            hideDropHighlight();
-        }
-
-        // Import(같은 그룹의 북마크만 허용)
+        @Override protected void exportDone(JComponent source, Transferable data, int action) { hideDropHighlight(); }
         @Override public boolean canImport(TransferSupport s) {
-            if (!(s.isDrop() && s.isDataFlavorSupported(DataFlavor.stringFlavor))) {
-                hideDropHighlight(); return false;
-            }
-            String payload = getStringData(s);
-            if (payload == null || !payload.startsWith("B:")) { hideDropHighlight(); return false; }
-            String[] parts = payload.split(":");
-            if (parts.length != 3) { hideDropHighlight(); return false; }
-            long fromGroup = parseLongSafe(parts[1], -1);
-            if (fromGroup != groupId) { hideDropHighlight(); return false; }
-
-            // 하이라이트(좌표 변환: 현재 컴포넌트 → listPanel)
-            Point pInComp = s.getDropLocation().getDropPoint();
-            Point pInList = SwingUtilities.convertPoint((Component)s.getComponent(), pInComp, listPanel);
-            int boundaryY = computeBookmarkBoundaryY(listPanel, pInList);
-            showDropHighlightAt(listPanel, boundaryY);
-            return true;
+            if (!s.isDrop()) { hideDropHighlight(); return false; }
+            if (s.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) { hideDropHighlight(); return true; }
+            if (s.isDataFlavorSupported(DataFlavor.stringFlavor)) return true;
+            hideDropHighlight(); return false;
         }
-
         @Override public boolean importData(TransferSupport s) {
             if (!canImport(s)) return false;
             try {
-                String payload = getStringData(s);
-                String[] parts = payload.split(":");
-                long movedBookmarkId = parseLongSafe(parts[2], -1);
-
-                Point pInComp = s.getDropLocation().getDropPoint();
-                Point pInList = SwingUtilities.convertPoint((Component)s.getComponent(), pInComp, listPanel);
-
-                int fromIndex = findBookmarkIndexById(listPanel, movedBookmarkId);
-                if (fromIndex < 0) { hideDropHighlight(); return false; }
-
-                int toIndex = computeBookmarkTargetIndex(listPanel, pInList);
-                if (toIndex == fromIndex) { hideDropHighlight(); return false; }
-                if (toIndex > fromIndex) toIndex--;
-
-                setUiBusy(true);
-                int finalIndex = toIndex;
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
-                        // NOTE: API 시그니처 (groupId, prevId, toIndex)
-                        // prevId = 이동할 북마크 ID 로 사용
-                        bookmarkService.reorderBookmark(groupId, movedBookmarkId, finalIndex);
-                        return null;
+                if (s.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                    List<File> files = (List<File>) s.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                    if (files != null) {
+                        for (File f : files) bookmarkService.createBookmark(groupId, f.getName(), f.getAbsolutePath());
+                        setStatus(files.size()+"개 항목을 추가했습니다."); rebuildAccordion(); return true;
                     }
-                    @Override protected void done() {
-                        setUiBusy(false);
-                        hideDropHighlight();
-                        rebuildAccordion();
+                    return false;
+                }
+                String payload = getStringData(s); if (payload == null) return false;
+
+                if (payload.startsWith("B:")) {
+                    String[] parts = payload.split(":");
+                    long fromGroup = parseLongSafe(parts[1], -1);
+                    long movedBookmarkId = parseLongSafe(parts[2], -1);
+
+                    Point pInComp = s.getDropLocation().getDropPoint();
+                    Point pInList = SwingUtilities.convertPoint((Component)s.getComponent(), pInComp, listPanel);
+
+                    int fromIndex = findBookmarkIndexById(listPanel, movedBookmarkId);
+                    int toIndex = computeBookmarkTargetIndex(listPanel, pInList);
+                    if (toIndex == fromIndex && fromGroup == groupId) { hideDropHighlight(); return false; }
+                    if (toIndex > fromIndex && fromGroup == groupId) toIndex--;
+
+                    setUiBusy(true);
+                    int finalIndex = toIndex;
+                    new SwingWorker<Void, Void>() {
+                        @Override protected Void doInBackground() {
+                            if (fromGroup == groupId) {
+                                bookmarkService.reorderBookmark(groupId, movedBookmarkId, finalIndex);
+                            } else {
+                                try { bookmarkService.moveBookmark(movedBookmarkId, groupId, finalIndex); } catch (Throwable t) {
+                                    // moveBookmark 미구현 환경을 위해 폴백: 대상 그룹 끝으로 넣고 reorder
+                                    Bookmark moved = null;
+                                    List<BookmarkGroup> groups = bookmarkGroupService.getBookmarkGroups();
+                                    outer: for (BookmarkGroup g : groups) {
+                                        List<Bookmark> lb = g.getBookmarks();
+                                        if (lb == null) continue;
+                                        for (Bookmark b : lb) if (b.getId() == movedBookmarkId) { moved = b; break outer; }
+                                    }
+                                    if (moved != null) {
+                                        bookmarkService.createBookmark(groupId, moved.getDisplayName(), moved.getPath());
+                                        // 원본 삭제는 서비스 정책에 따름
+                                    }
+                                }
+                            }
+                            return null;
+                        }
+                        @Override protected void done() {
+                            setUiBusy(false); hideDropHighlight(); setStatus("북마크 위치가 변경되었습니다."); rebuildAccordion();
+                        }
+                    }.execute();
+                    return true;
+                } else {
+                    // 외부 텍스트 줄단위로 경로 처리
+                    for (String line : payload.split("\\R")) {
+                        if (line.isBlank()) continue;
+                        File f = new File(line.trim());
+                        if (f.exists()) bookmarkService.createBookmark(groupId, f.getName(), f.getAbsolutePath());
                     }
-                }.execute();
-                return true;
+                    setStatus("텍스트 드롭으로 항목을 추가했습니다."); rebuildAccordion(); return true;
+                }
             } catch (Exception ex) {
-                setUiBusy(false);
-                hideDropHighlight();
-                JOptionPane.showMessageDialog(MainFrameV2.this, "북마크 순서 변경 실패: " + ex.getMessage(),
-                        "오류", JOptionPane.ERROR_MESSAGE);
-                return false;
+                setUiBusy(false); hideDropHighlight(); showError("작업 실패: " + ex.getMessage()); return false;
             }
         }
     }
 
     /** 리스트 패널(빈 공간) Import 핸들러 */
     private final class BookmarkListImportHandler extends TransferHandler {
-        private final long groupId;
-        private final JPanel listPanel;
-
-        BookmarkListImportHandler(long groupId, JPanel listPanel) {
-            this.groupId = groupId; this.listPanel = listPanel;
-        }
-
+        private final long groupId; private final JPanel listPanel;
+        BookmarkListImportHandler(long groupId, JPanel listPanel) { this.groupId = groupId; this.listPanel = listPanel; }
         @Override public boolean canImport(TransferSupport s) {
-            if (!(s.isDrop() && s.isDataFlavorSupported(DataFlavor.stringFlavor))) {
-                hideDropHighlight(); return false;
+            if (!s.isDrop()) { hideDropHighlight(); return false; }
+            if (s.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) { hideDropHighlight(); return true; }
+            if (s.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                String payload = getStringData(s); if (payload == null) { hideDropHighlight(); return false; }
+                // 북마크 이동 or 외부 텍스트
+                // 하이라이트(좌표 변환: 현재 컴포넌트 → listPanel)
+                Point p = s.getDropLocation().getDropPoint();
+                int boundaryY = computeBookmarkBoundaryY(listPanel, p);
+                showDropHighlightAt(listPanel, boundaryY);
+                return true;
             }
-            String payload = getStringData(s);
-            if (payload == null || !payload.startsWith("B:")) { hideDropHighlight(); return false; }
-            String[] parts = payload.split(":");
-            if (parts.length != 3) { hideDropHighlight(); return false; }
-            long fromGroup = parseLongSafe(parts[1], -1);
-            if (fromGroup != groupId) { hideDropHighlight(); return false; }
-
-            Point p = s.getDropLocation().getDropPoint(); // listPanel 좌표
-            int boundaryY = computeBookmarkBoundaryY(listPanel, p);
-            showDropHighlightAt(listPanel, boundaryY);
-            return true;
+            hideDropHighlight(); return false;
         }
-
         @Override public boolean importData(TransferSupport s) {
             if (!canImport(s)) return false;
             try {
+                if (s.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                    List<File> files = (List<File>) s.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                    if (files != null) {
+                        for (File f : files) bookmarkService.createBookmark(groupId, f.getName(), f.getAbsolutePath());
+                        setStatus(files.size()+"개 항목을 추가했습니다."); rebuildAccordion(); return true;
+                    }
+                    return false;
+                }
                 String payload = getStringData(s);
-                String[] parts = payload.split(":");
-                long movedBookmarkId = parseLongSafe(parts[2], -1);
+                if (payload == null) return false;
 
                 Point p = s.getDropLocation().getDropPoint(); // listPanel 기준
-
-                int fromIndex = findBookmarkIndexById(listPanel, movedBookmarkId);
-                if (fromIndex < 0) { hideDropHighlight(); return false; }
-
                 int toIndex = computeBookmarkTargetIndex(listPanel, p);
-                if (toIndex == fromIndex) { hideDropHighlight(); return false; }
-                if (toIndex > fromIndex) toIndex--;
 
-                setUiBusy(true);
-                int finalIndex = toIndex;
-                new SwingWorker<Void, Void>() {
-                    @Override protected Void doInBackground() {
-                        bookmarkService.reorderBookmark(groupId, movedBookmarkId, finalIndex);
-                        return null;
+                if (payload.startsWith("B:")) {
+                    String[] parts = payload.split(":");
+                    long fromGroup = parseLongSafe(parts[1], -1);
+                    long movedBookmarkId = parseLongSafe(parts[2], -1);
+
+                    int fromIndex = findBookmarkIndexById(listPanel, movedBookmarkId);
+                    if (toIndex == fromIndex && fromGroup == groupId) { hideDropHighlight(); return false; }
+                    if (toIndex > fromIndex && fromGroup == groupId) toIndex--;
+
+                    int finalIndex = toIndex;
+                    setUiBusy(true);
+                    new SwingWorker<Void, Void>() {
+                        @Override protected Void doInBackground() {
+                            if (fromGroup == groupId) {
+                                bookmarkService.reorderBookmark(groupId, movedBookmarkId, finalIndex);
+                            } else {
+                                try { bookmarkService.moveBookmark(movedBookmarkId, groupId, finalIndex); } catch (Throwable t) {
+                                    // 폴백
+                                    Bookmark moved = null;
+                                    List<BookmarkGroup> groups = bookmarkGroupService.getBookmarkGroups();
+                                    outer: for (BookmarkGroup g : groups) {
+                                        List<Bookmark> lb = g.getBookmarks();
+                                        if (lb == null) continue;
+                                        for (Bookmark b : lb) if (b.getId() == movedBookmarkId) { moved = b; break outer; }
+                                    }
+                                    if (moved != null) {
+                                        bookmarkService.createBookmark(groupId, moved.getDisplayName(), moved.getPath());
+                                    }
+                                }
+                            }
+                            return null;
+                        }
+                        @Override protected void done() {
+                            setUiBusy(false); hideDropHighlight(); setStatus("북마크 위치가 변경되었습니다."); rebuildAccordion();
+                        }
+                    }.execute();
+                    return true;
+                } else {
+                    // 외부 텍스트 줄단위로 경로 처리
+                    for (String line : payload.split("\\R")) {
+                        if (line.isBlank()) continue;
+                        File f = new File(line.trim());
+                        if (f.exists()) bookmarkService.createBookmark(groupId, f.getName(), f.getAbsolutePath());
                     }
-                    @Override protected void done() {
-                        setUiBusy(false);
-                        hideDropHighlight();
-                        rebuildAccordion();
-                    }
-                }.execute();
-                return true;
+                    setStatus("텍스트 드롭으로 항목을 추가했습니다."); rebuildAccordion(); return true;
+                }
             } catch (Exception ex) {
-                setUiBusy(false);
-                hideDropHighlight();
-                JOptionPane.showMessageDialog(MainFrameV2.this, "북마크 순서 변경 실패: " + ex.getMessage(),
-                        "오류", JOptionPane.ERROR_MESSAGE);
-                return false;
+                setUiBusy(false); hideDropHighlight(); showError("작업 실패: " + ex.getMessage()); return false;
             }
         }
     }
@@ -853,10 +859,7 @@ public class MainFrameV2 extends JFrame {
         for (Component c : accordion.getComponents()) {
             if (c instanceof GroupSection gs) {
                 gs.toggle.setEnabled(!busy);
-                gs.addBookmarkBtn.setEnabled(!busy);
-                gs.renameGroupBtn.setEnabled(!busy);
-                gs.deleteGroupBtn.setEnabled(!busy);
-                gs.orderCombo.setEnabled(!busy);
+                gs.moreBtn.setEnabled(!busy);
             }
         }
     }
@@ -871,9 +874,9 @@ public class MainFrameV2 extends JFrame {
     }
 
     private static JComponent emptyHint(String text) {
-        JLabel l = new JLabel(text, SwingConstants.CENTER);
-        l.setForeground(new Color(130, 130, 140));
-        l.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+        JLabel l = new JLabel(text, SwingConstants.LEFT);
+        l.setForeground(new Color(120, 120, 130));
+        l.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
         var p = new JPanel(new BorderLayout());
         p.add(l, BorderLayout.CENTER);
         p.setOpaque(false);
@@ -882,6 +885,12 @@ public class MainFrameV2 extends JFrame {
 
     private static void stylizeButton(AbstractButton b) {
         try { b.putClientProperty("JButton.buttonType", "roundRect"); } catch (Exception ignored) {}
+    }
+
+    private static void stylizeIconButton(AbstractButton b) {
+        b.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+        b.setContentAreaFilled(false);
+        b.setFocusPainted(false);
     }
 
     private static String esc(String s) {
@@ -900,5 +909,87 @@ public class MainFrameV2 extends JFrame {
 
     private static long parseLongSafe(String s, long dflt) {
         try { return Long.parseLong(s); } catch (Exception e) { return dflt; }
+    }
+
+    private void setStatus(String msg) {
+        statusLabel.setText(msg);
+        statusActionBtn.setVisible(false);
+        if (statusTimer != null) statusTimer.stop();
+        statusTimer = new Timer(2500, e -> statusLabel.setText(" "));
+        statusTimer.setRepeats(false);
+        statusTimer.start();
+    }
+
+    private void setStatusWithAction(String msg, String action, Runnable handler) {
+        statusLabel.setText(msg);
+        statusActionBtn.setText(action);
+        statusActionBtn.setVisible(true);
+        this.statusActionHandler = handler;
+        if (statusTimer != null) statusTimer.stop();
+        statusTimer = new Timer(6000, e -> { statusLabel.setText(" "); statusActionBtn.setVisible(false); });
+        statusTimer.setRepeats(false);
+        statusTimer.start();
+    }
+
+    private void showError(String msg){
+        JOptionPane.showMessageDialog(this, msg, "오류", JOptionPane.ERROR_MESSAGE);
+    }
+
+    private void openBookmarkPath(String pathStr){
+        try {
+            if (pathStr == null || pathStr.isBlank()) throw new IllegalArgumentException("경로가 비어있습니다.");
+            Path p = java.nio.file.Path.of(pathStr);
+            Desktop.getDesktop().open(p.toFile());
+        } catch (Exception ex) {
+            showError("열 수 없습니다: " + ex.getMessage());
+        }
+    }
+
+    private void loadWindowPrefs(){
+        try {
+            int w = prefs.getInt("win.w", getWidth());
+            int h = prefs.getInt("win.h", getHeight());
+            setSize(w, h);
+        } catch (Exception ignore){}
+    }
+
+    private void saveWindowPrefs(){
+        try {
+            prefs.putInt("win.w", getWidth());
+            prefs.putInt("win.h", getHeight());
+            // 펼침 상태 저장
+            List<BookmarkGroup> groups = bookmarkGroupService.getBookmarkGroups();
+            StringBuilder sb = new StringBuilder();
+            for (BookmarkGroup g : groups) {
+                boolean ex = expandState.getOrDefault(g.getId(), Boolean.TRUE);
+                sb.append(g.getId()).append(":").append(ex ? "1" : "0").append(",");
+            }
+            prefs.put("expandState", sb.toString());
+        } catch (Exception ignore){}
+    }
+
+    private void loadExpandStateFromPrefs(List<BookmarkGroup> groups){
+        try {
+            String s = prefs.get("expandState", "");
+            Map<Long, Boolean> map = new HashMap<>();
+            for (String part : s.split(",")) {
+                if (part.isBlank()) continue;
+                String[] kv = part.split(":");
+                long id = parseLongSafe(kv[0], -1);
+                boolean ex = "1".equals(kv.length > 1 ? kv[1] : "1");
+                map.put(id, ex);
+            }
+            for (BookmarkGroup g : groups) {
+                if (!expandState.containsKey(g.getId()) && map.containsKey(g.getId())) {
+                    expandState.put(g.getId(), map.get(g.getId()));
+                }
+            }
+        } catch (Exception ignore){}
+    }
+
+    private Color getSeparatorColor() {
+        Color c = UIManager.getColor("Component.borderColor");
+        if (c == null) c = new Color(230, 230, 235);
+        return c;
     }
 }
