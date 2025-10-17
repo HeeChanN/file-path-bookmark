@@ -255,6 +255,19 @@ public class MainFrameV2 extends JFrame {
 
             // more 버튼(컨텍스트 메뉴, 작은 버튼)
             stylizeIconButton(moreBtn);
+            moreBtn.setPreferredSize(new Dimension(24, 24));
+            // More 버튼 호버 효과
+            moreBtn.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    moreBtn.setBackground(NOTION_HOVER);
+                    moreBtn.setOpaque(true);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    moreBtn.setOpaque(false);
+                }
+            });
             var groupMenu = buildGroupPopupMenu();
             moreBtn.addActionListener(e -> groupMenu.show(moreBtn, 0, moreBtn.getHeight()));
             // 헤더 우클릭도 동일 메뉴
@@ -419,6 +432,19 @@ public class MainFrameV2 extends JFrame {
 
             // ⋯ 메뉴 (작은 버튼)
             stylizeIconButton(moreBtn);
+            moreBtn.setPreferredSize(new Dimension(24, 24));
+            // More 버튼 호버 효과
+            moreBtn.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    moreBtn.setBackground(NOTION_HOVER);
+                    moreBtn.setOpaque(true);
+                }
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    moreBtn.setOpaque(false);
+                }
+            });
             var rowMenu = buildRowPopupMenu();
             moreBtn.addActionListener(e -> rowMenu.show(moreBtn, 0, moreBtn.getHeight()));
             addMouseListener(new MouseAdapter(){ @Override public void mousePressed(MouseEvent e){ if (e.isPopupTrigger()) rowMenu.show(BookmarkRow.this, e.getX(), e.getY()); } @Override public void mouseReleased(MouseEvent e){ if (e.isPopupTrigger()) rowMenu.show(BookmarkRow.this, e.getX(), e.getY()); }});

@@ -297,12 +297,179 @@ Notion의 패딩 값에 맞춰 조정:
 
 ---
 
+## 개선사항 상태
+✅ **개선사항 #1**: Notion 색상 스키마 적용 - **완료**
+✅ **개선사항 #2**: 호버 효과 추가 - **완료**
+✅ **개선사항 #3**: 패딩 및 간격 조정 - **완료**
+
+**현재 Notion 유사도**: 9/10
+
+---
+
+# 추가 UI 개선 제안 (반복 #4-6)
+
+## 분석 일시
+2025-10-17 (추가 분석)
+
+## 전체 평가
+기본적인 Notion 스타일은 매우 잘 구현되어 있습니다. 이제 더 세밀한 디테일과 사용성 개선에 집중합니다.
+
+**추가로 개선 가능한 영역**:
+- 아이콘 크기 및 스타일 개선
+- 선택 상태(Selected) 표시 추가
+- 북마크 행의 더 나은 시각적 계층
+
+---
+
+## 개선사항 #4: 토글 아이콘 및 More 버튼 스타일 개선
+**우선순위**: High
+**예상 작업 시간**: 20분
+**카테고리**: 인터랙션/시각 디자인
+
+### 문제점
+현재 구현:
+- 토글 버튼: "▸"와 "▾" 문자 사용 (line 234, 338)
+- More 버튼: "⋯" 문자 사용 (line 204, 373)
+- 버튼이 기본 Swing 스타일이라 Notion의 미니멀한 느낌과 다름
+- 호버 시 배경색 변화가 없어 클릭 가능 여부가 불명확
+
+Notion의 특징:
+- 아이콘 버튼은 기본적으로 투명
+- 호버 시에만 연한 회색 원형 배경 표시
+- 크기가 일정 (보통 24×24px)
+
+### 개선 방향
+1. 토글 버튼 스타일 개선:
+```java
+toggle.setBorderPainted(false);
+toggle.setContentAreaFilled(false);
+toggle.setFocusPainted(false);
+toggle.setPreferredSize(new Dimension(24, 24));
+```
+
+2. More 버튼에 호버 효과 추가:
+```java
+stylizeIconButton(moreBtn);
+moreBtn.setPreferredSize(new Dimension(24, 24));
+moreBtn.addMouseListener(new MouseAdapter() {
+    @Override
+    public void mouseEntered(MouseEvent e) {
+        moreBtn.setBackground(NOTION_HOVER);
+        moreBtn.setOpaque(true);
+    }
+    @Override
+    public void mouseExited(MouseEvent e) {
+        moreBtn.setOpaque(false);
+    }
+});
+```
+
+### 기대 효과
+- 인터랙티브 요소의 시각적 피드백 강화
+- Notion의 미니멀하고 깔끔한 아이콘 버튼 스타일 재현
+- 사용성 향상
+
+---
+
+## 개선사항 #5: 아이템 선택 상태 시각화
+**우선순위**: Medium
+**예상 작업 시간**: 25분
+**카테고리**: 인터랙션
+
+### 문제점
+현재 구현에는 선택(Selected) 상태가 없습니다:
+- 북마크를 클릭해도 선택 표시가 없음
+- 어떤 항목에 포커스가 있는지 알 수 없음
+- Notion은 선택된 항목에 더 진한 배경색 표시
+
+### 개선 방향
+1. BookmarkRow에 선택 상태 추가:
+```java
+private boolean selected = false;
+private static final Color NOTION_SELECTED = new Color(224, 224, 224);
+
+// 클릭 시 선택 상태 토글
+addMouseListener(new MouseAdapter() {
+    @Override
+    public void mouseClicked(MouseEvent e) {
+        if (e.getClickCount() == 1 && SwingUtilities.isLeftMouseButton(e)) {
+            selected = !selected;
+            updateBackground();
+        } else if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+            openBookmarkPath(bm.getPath());
+        }
+    }
+
+    @Override
+    public void mouseEntered(MouseEvent e) {
+        if (!selected) setBackground(NOTION_HOVER);
+    }
+
+    @Override
+    public void mouseExited(MouseEvent e) {
+        updateBackground();
+    }
+});
+
+private void updateBackground() {
+    setBackground(selected ? NOTION_SELECTED : NOTION_BG);
+}
+```
+
+### 기대 효과
+- 현재 포커스된 항목 명확히 표시
+- Notion과 동일한 선택 인터랙션
+- 키보드 네비게이션 준비
+
+---
+
+## 개선사항 #6: 힌트 텍스트 색상 및 스타일 통일
+**우선순위**: Low
+**예상 작업 시간**: 10분
+**카테고리**: 색상/타이포그래피
+
+### 문제점
+현재 힌트 텍스트:
+- emptyHint() 메서드에서 `new Color(120, 120, 130)` 사용 (line 914)
+- Notion의 회색 텍스트 색상과 다름
+- 일관성 없는 색상 사용
+
+Notion의 힌트 텍스트:
+- 색상: `#9B9A97` (155, 154, 151) - 따뜻한 회색
+- 크기: 본문보다 약간 작음
+
+### 개선 방향
+1. Notion 힌트 색상 상수 추가:
+```java
+private static final Color NOTION_HINT = new Color(155, 154, 151);
+```
+
+2. emptyHint() 메서드 수정:
+```java
+private static JComponent emptyHint(String text) {
+    JLabel l = new JLabel(text, SwingConstants.LEFT);
+    l.setForeground(NOTION_HINT);
+    l.setFont(l.getFont().deriveFont(13f));
+    l.setBorder(BorderFactory.createEmptyBorder(6, 8, 6, 8));
+    var p = new JPanel(new BorderLayout());
+    p.add(l, BorderLayout.CENTER);
+    p.setOpaque(false);
+    return p;
+}
+```
+
+### 기대 효과
+- 색상 팔레트 일관성 향상
+- Notion의 따뜻한 색감 완벽 재현
+- 가독성 및 계층 구조 명확화
+
+---
+
 ## 다음 단계
-**우선 구현할 개선사항**: #1 (Notion 색상 스키마 적용)
+**우선 구현할 개선사항**: #4 (토글 아이콘 및 More 버튼 스타일 개선)
 
 **이유**:
-- 색상은 UI의 첫인상을 결정하는 가장 중요한 요소
-- 작업 시간이 짧고(20분) 효과가 즉각적으로 나타남
-- 후속 개선사항(#2, #3)의 기반이 됨
-- Notion 유사도를 빠르게 5/10 → 7/10으로 끌어올릴 수 있음
-- 기존 기능에 영향을 주지 않는 안전한 변경
+- 사용자가 가장 자주 인터랙션하는 요소
+- 시각적 피드백 개선으로 사용성 크게 향상
+- 구현이 명확하고 리스크가 낮음
+- Notion의 미니멀한 느낌을 완성하는 핵심 요소
