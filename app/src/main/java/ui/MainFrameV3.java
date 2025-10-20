@@ -19,26 +19,30 @@ import java.util.List;
 import java.util.*;
 import java.util.prefs.Preferences;
 
-public class MainFrameV2 extends JFrame {
+public class MainFrameV3 extends JFrame {
 
     // Notion 라이트 테마 색상
-    private static final Color NOTION_BG = new Color(247, 246, 243);
-    private static final Color NOTION_TEXT = new Color(55, 53, 47);
-    private static final Color NOTION_HOVER = new Color(232, 231, 227);
-    private static final Color NOTION_BORDER = new Color(232, 231, 227);
-    private static final Color NOTION_ACCENT = new Color(35, 131, 226);
-    private static final Color NOTION_HINT = new Color(155, 154, 151);
+    private static final Color NOTION_BG = new Color(250, 251, 252);
+    private static final Color NOTION_TEXT = new Color(37, 42, 52);
+    private static final Color NOTION_HOVER = new Color(240, 242, 245);
+    private static final Color NOTION_BORDER = new Color(225, 228, 232);
+    private static final Color NOTION_ACCENT = new Color(59, 130, 246);
+    private static final Color NOTION_HINT = new Color(107, 114, 128);
+
+    /** 고정 행 높이(정적) */
+    private static final int ROW_HEIGHT = 28;
 
     private final BookmarkService bookmarkService;
     private final BookmarkGroupService bookmarkGroupService;
 
     // 상단 툴바 (간소화)
+    private final JButton toolbarMenuBtn = new JButton("⚙");
     private final JButton addGroupBtn = new JButton("그룹 추가");
     private final JButton expandAllBtn = new JButton("모두 펼치기");
     private final JButton collapseAllBtn = new JButton("모두 접기");
 
-    // 중앙 아코디언 컨테이너
-    private final JPanel accordion = new JPanel();
+    // 중앙 아코디언 컨테이너 (뷰포트 폭을 따라가도록 Scrollable 구현)
+    private final ScrollablePanel accordion = new ScrollablePanel();
     private JScrollPane scroll; // 스크롤 위치 보존용
 
     // 섹션 펼침/접힘 상태 보존
@@ -64,20 +68,20 @@ public class MainFrameV2 extends JFrame {
     private DeletedBookmark lastDeleted;
 
     // 환경설정 저장
-    private final Preferences prefs = Preferences.userNodeForPackage(MainFrameV2.class);
+    private final Preferences prefs = Preferences.userNodeForPackage(MainFrameV3.class);
 
-    public MainFrameV2(BookmarkService bookmarkService, BookmarkGroupService bookmarkGroupService) {
-        super("Shortcut Manager");
+    public MainFrameV3(BookmarkService bookmarkService, BookmarkGroupService bookmarkGroupService) {
+        super("북마크");
         this.bookmarkService = Objects.requireNonNull(bookmarkService);
         this.bookmarkGroupService = Objects.requireNonNull(bookmarkGroupService);
 
         // ====== UI 기본 ======
-        setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
         setSize(320, 720); // Notion Sidebar 비율 (좁고 길게)
         setLocationRelativeTo(null);
         setLayout(new BorderLayout());
         getContentPane().setBackground(NOTION_BG);
-        loadWindowPrefs();
+        //loadWindowPrefs();
 
         // 상단 툴바
         var toolbar = buildToolbar();
@@ -90,7 +94,9 @@ public class MainFrameV2 extends JFrame {
         scroll.getViewport().setBackground(NOTION_BG);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getVerticalScrollBar().setUI(new NotionScrollBarUI());
-        scroll.getVerticalScrollBar().setUnitIncrement(16);
+        scroll.getVerticalScrollBar().setUnitIncrement(ROW_HEIGHT);
+        // ✨ 가로 스크롤 금지 & 폭 고정
+        scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         add(scroll, BorderLayout.CENTER);
 
         // 그룹 DnD: 빈 공간(섹션 사이)에서도 작동하도록 아코디언에 Import 핸들러
@@ -126,42 +132,101 @@ public class MainFrameV2 extends JFrame {
 
     // 상단 툴바 (심플)
     private JComponent buildToolbar() {
-        var bar = new JPanel(new GridBagLayout());
+        // 바: 좌측 타이틀, 우측 ⚙ 버튼
+        JPanel bar = new JPanel(new BorderLayout());
         bar.setBackground(NOTION_BG);
-        var gbc = new GridBagConstraints();
-        gbc.insets = new Insets(12, 12, 12, 12);
-        gbc.gridx = 0; gbc.gridy = 0; gbc.anchor = GridBagConstraints.WEST;
 
-        stylizeButton(addGroupBtn);
-        stylizeButton(expandAllBtn);
-        stylizeButton(collapseAllBtn);
+        // 앱 타이틀(원하면 숨겨도 됨)
+        JLabel title = new JLabel("");
+        title.setForeground(NOTION_TEXT);
+        title.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+        title.setFont(title.getFont().deriveFont(Font.BOLD, 14f));
+        bar.add(title, BorderLayout.WEST);
 
-        bar.add(addGroupBtn, gbc); gbc.gridx++;
-        bar.add(expandAllBtn, gbc); gbc.gridx++;
-        bar.add(collapseAllBtn, gbc);
+        // ⚙ 버튼(팝업 메뉴를 띄우는 단일 엔트리)
+        stylizeIconButton(toolbarMenuBtn);
+        toolbarMenuBtn.setText(null); // 텍스트 제거
+        toolbarMenuBtn.setIcon(new GearIcon(20, NOTION_TEXT));               // 기본(28px)
+        toolbarMenuBtn.setRolloverIcon(new GearIcon(20, NOTION_ACCENT));     // 호버 시 색상
+        toolbarMenuBtn.setPressedIcon(new GearIcon(20, NOTION_HINT));        // 눌림 시 색상
+        toolbarMenuBtn.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
+        toolbarMenuBtn.setPreferredSize(new Dimension(40, 40));              // 클릭 영역 넉넉히
+        toolbarMenuBtn.setToolTipText("도구");
 
-        // 얇은 하단 보더를 위한 래퍼
-        var wrapper = new JPanel(new BorderLayout());
+        // 호버 효과
+        toolbarMenuBtn.addMouseListener(new MouseAdapter() {
+            @Override public void mouseEntered(MouseEvent e) {
+                toolbarMenuBtn.setOpaque(true);
+                toolbarMenuBtn.setBackground(NOTION_HOVER);
+            }
+            @Override public void mouseExited(MouseEvent e)  {
+                toolbarMenuBtn.setOpaque(false);
+            }
+        });
+
+        // 팝업 메뉴 구성: 기존 세 버튼을 여기로 통합
+        JPopupMenu tools = new JPopupMenu();
+        JMenuItem miAdd = new JMenuItem("그룹 추가…");
+        JMenuItem miExpand = new JMenuItem("모두 펼치기");
+        JMenuItem miCollapse = new JMenuItem("모두 접기");
+        // (선택) 환경설정이 있다면 추가 가능
+        // JMenuItem miPrefs = new JMenuItem("환경설정…");
+
+        miAdd.addActionListener(e -> handleAddGroup());
+        miExpand.addActionListener(e -> handleExpandAll());
+        miCollapse.addActionListener(e -> handleCollapseAll());
+
+        tools.add(miAdd);
+        tools.addSeparator();
+        tools.add(miExpand);
+        tools.add(miCollapse);
+        // tools.addSeparator(); tools.add(miPrefs);
+
+        stylizePopupMenu(tools);
+
+        toolbarMenuBtn.addActionListener(e -> {
+            tools.show(toolbarMenuBtn, 0, toolbarMenuBtn.getHeight());
+        });
+
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        right.setOpaque(false);
+        right.add(toolbarMenuBtn);
+        bar.add(right, BorderLayout.EAST);
+
+        // 하단 경계선 래퍼(기존 스타일 유지)
+        JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.add(bar, BorderLayout.CENTER);
         wrapper.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, getSeparatorColor()));
         return wrapper;
     }
 
-    private void wireActions() {
-        addGroupBtn.addActionListener(e -> {
-            String name = JOptionPane.showInputDialog(this, "그룹명");
-            if (name == null || name.isBlank()) return;
-            try {
-                bookmarkGroupService.createBookmarkGroup(name);
-                setStatus("그룹이 추가되었습니다.");
-                rebuildAccordion();
-            } catch (RuntimeException ex) {
-                showError("그룹 생성 실패: " + ex.getMessage());
-            }
-        });
+    private void handleAddGroup() {
+        String name = JOptionPane.showInputDialog(this, "그룹명");
+        if (name == null || name.isBlank()) return;
+        try {
+            bookmarkGroupService.createBookmarkGroup(name);
+            setStatus("그룹이 추가되었습니다.");
+            rebuildAccordion();
+        } catch (RuntimeException ex) {
+            showError("그룹 생성 실패: " + ex.getMessage());
+        }
+    }
 
-        expandAllBtn.addActionListener(e -> setAllSectionsExpanded(true));
-        collapseAllBtn.addActionListener(e -> setAllSectionsExpanded(false));
+    private void handleExpandAll() {
+        setAllSectionsExpanded(true);
+        setStatus("모든 그룹을 펼쳤습니다.");
+    }
+
+    private void handleCollapseAll() {
+        setAllSectionsExpanded(false);
+        setStatus("모든 그룹을 접었습니다.");
+    }
+
+    private void wireActions() {
+        // 기존 버튼(화면에는 없음)도 동일 액션에 연결해둠 — 유지보수/재사용성
+        addGroupBtn.addActionListener(e -> handleAddGroup());
+        expandAllBtn.addActionListener(e -> handleExpandAll());
+        collapseAllBtn.addActionListener(e -> handleCollapseAll());
     }
 
     /** 전체 아코디언 섹션 재구성 */
@@ -267,7 +332,7 @@ public class MainFrameV2 extends JFrame {
             title.addMouseListener(new MouseAdapter(){
                 @Override public void mouseClicked(MouseEvent e){
                     if (e.getClickCount()==2) {
-                        String newName = JOptionPane.showInputDialog(MainFrameV2.this, "새 그룹명", group.getName());
+                        String newName = JOptionPane.showInputDialog(MainFrameV3.this, "새 그룹명", group.getName());
                         if (newName == null || newName.isBlank() || newName.equals(group.getName())) return;
                         try { bookmarkGroupService.renameBookmarkGroup(group.getId(), newName); setStatus("그룹 이름이 변경되었습니다."); rebuildAccordion(); }
                         catch (RuntimeException ex) { showError("이름 변경 실패: " + ex.getMessage()); }
@@ -349,7 +414,7 @@ public class MainFrameV2 extends JFrame {
 
             JMenuItem rename = new JMenuItem("이름 변경…");
             rename.addActionListener(e -> {
-                String newName = JOptionPane.showInputDialog(MainFrameV2.this, "새 그룹명", group.getName());
+                String newName = JOptionPane.showInputDialog(MainFrameV3.this, "새 그룹명", group.getName());
                 if (newName == null || newName.isBlank() || newName.equals(group.getName())) return;
                 try { bookmarkGroupService.renameBookmarkGroup(group.getId(), newName); setStatus("그룹 이름이 변경되었습니다."); rebuildAccordion(); }
                 catch (RuntimeException ex) { showError("이름 변경 실패: " + ex.getMessage()); }
@@ -358,7 +423,7 @@ public class MainFrameV2 extends JFrame {
 
             JMenuItem del = new JMenuItem("삭제…");
             del.addActionListener(e -> {
-                int r = JOptionPane.showConfirmDialog(MainFrameV2.this,
+                int r = JOptionPane.showConfirmDialog(MainFrameV3.this,
                         "그룹을 삭제하시겠습니까?\n" + group.getName(),
                         "확인", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
                 if (r != JOptionPane.OK_OPTION) return;
@@ -377,10 +442,10 @@ public class MainFrameV2 extends JFrame {
             JFileChooser fc = new JFileChooser();
             fc.setDialogTitle("파일 또는 폴더 선택");
             fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-            int res = fc.showOpenDialog(MainFrameV2.this);
+            int res = fc.showOpenDialog(MainFrameV3.this);
             if (res != JFileChooser.APPROVE_OPTION) return;
             File f = fc.getSelectedFile(); String defaultName = f.getName();
-            String displayName = JOptionPane.showInputDialog(MainFrameV2.this, "표시 이름(생략 가능)", defaultName); if (displayName == null) return;
+            String displayName = JOptionPane.showInputDialog(MainFrameV3.this, "표시 이름(생략 가능)", defaultName); if (displayName == null) return;
             try { bookmarkService.createBookmark(group.getId(), displayName, f.getAbsolutePath()); setStatus("북마크가 추가되었습니다."); reloadBookmarks(); }
             catch (RuntimeException ex) { showError("북마크 생성 실패: " + ex.getMessage()); }
         }
@@ -390,7 +455,7 @@ public class MainFrameV2 extends JFrame {
             content.removeAll();
             List<Bookmark> bookmarks = group.getBookmarks();
             if (bookmarks == null || bookmarks.isEmpty()) {
-                content.add(emptyHint("이 그룹이 비어 있습니다. 파일을 드래그하여 추가하세요."));
+                content.add(emptyHint("파일을 드래그하여 추가하세요."));
             } else {
                 int count = 0;
                 for (Bookmark b : bookmarks) {
@@ -425,31 +490,9 @@ public class MainFrameV2 extends JFrame {
             nameLabel.setFont(nameLabel.getFont().deriveFont(Font.PLAIN, 14f));
             nameLabel.setForeground(NOTION_TEXT);
 
-            // 더블클릭 = 열기
-            addMouseListener(new MouseAdapter(){ @Override public void mouseClicked(MouseEvent e){ if (e.getClickCount()==2 && SwingUtilities.isLeftMouseButton(e)) { openBookmarkPath(bm.getPath()); } }});
-
-            // DnD: 행 전체에서 드래그 시작 가능
+            // DnD: 행 전체에서 드래그 시작 가능 (자식 컴포넌트에서도 동일하게 동작)
             var rowDnD = new BookmarkRowTransferHandler(groupId, bm.getId(), listPanel);
             setTransferHandler(rowDnD);
-            addMouseListener(new MouseAdapter(){
-                Point pressAt;
-                @Override public void mousePressed(MouseEvent e){ pressAt = e.getPoint(); }
-                @Override public void mouseDragged(MouseEvent e){
-                    if (pressAt != null && e.getPoint().distance(pressAt) > 6) {
-                        getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
-                        pressAt = null;
-                    }
-                }
-            });
-            addMouseMotionListener(new MouseMotionAdapter(){
-                Point pressAt;
-                @Override public void mouseDragged(MouseEvent e){
-                    if (pressAt == null) pressAt = new Point(0,0);
-                    if (e.getPoint().distance(pressAt) > 6) {
-                        getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
-                    }
-                }
-            });
 
             // ⋯ 메뉴 (작은 버튼)
             stylizeIconButton(moreBtn);
@@ -468,7 +511,6 @@ public class MainFrameV2 extends JFrame {
             });
             var rowMenu = buildRowPopupMenu();
             moreBtn.addActionListener(e -> rowMenu.show(moreBtn, 0, moreBtn.getHeight()));
-            addMouseListener(new MouseAdapter(){ @Override public void mousePressed(MouseEvent e){ if (e.isPopupTrigger()) rowMenu.show(BookmarkRow.this, e.getX(), e.getY()); } @Override public void mouseReleased(MouseEvent e){ if (e.isPopupTrigger()) rowMenu.show(BookmarkRow.this, e.getX(), e.getY()); }});
 
             // 레이아웃
             var gbc = new GridBagConstraints();
@@ -478,17 +520,97 @@ public class MainFrameV2 extends JFrame {
             gbc.gridx=1; gbc.weightx=0; gbc.fill = GridBagConstraints.NONE; gbc.anchor=GridBagConstraints.EAST;
             add(moreBtn, gbc);
 
-            // Notion 스타일 호버 효과
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
+            // === ✨ Hover/Click 인식 강화 (행/자식 모두에서 일관 동작) ===
+            final Cursor HAND = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR);
+
+            // 1) 롤오버(hover) 어댑터: 자식→부모 이동시 배경 유지
+            MouseAdapter hoverAdapter = new MouseAdapter() {
+                @Override public void mouseEntered(MouseEvent e) {
                     setBackground(NOTION_HOVER);
+                    setCursor(HAND);
                 }
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    setBackground(NOTION_BG);
+                @Override public void mouseExited(MouseEvent e) {
+                    // 자식간 이동시에는 배경 유지
+                    Point p = SwingUtilities.convertPoint((Component) e.getSource(), e.getPoint(), BookmarkRow.this);
+                    if (!BookmarkRow.this.contains(p)) {
+                        setBackground(NOTION_BG);
+                        setCursor(Cursor.getDefaultCursor());
+                    }
                 }
-            });
+            };
+
+            // 2) 드래그 시작 어댑터: 자식에서도 드래그 시작 가능
+            MouseAdapter dragStarter = new MouseAdapter() {
+                Point startOnScreen = null;
+                @Override public void mousePressed(MouseEvent e) { startOnScreen = e.getLocationOnScreen(); }
+                @Override public void mouseDragged(MouseEvent e) {
+                    if (startOnScreen == null) return;
+                    Point now = e.getLocationOnScreen();
+                    if (now.distance(startOnScreen) > 6) {
+                        BookmarkRow.this.getTransferHandler().exportAsDrag(BookmarkRow.this, e, TransferHandler.MOVE);
+                        startOnScreen = null;
+                    }
+                }
+            };
+
+            // 3) 더블클릭 열기: 라벨/빈 영역에서 모두 반응 (⋯ 버튼 제외)
+            MouseAdapter openOnDoubleClick = new MouseAdapter() {
+                @Override public void mouseClicked(MouseEvent e) {
+                    if (!SwingUtilities.isLeftMouseButton(e)) return;
+                    if (e.getClickCount() == 1) {
+                        // 싱글 클릭: 경로 복사
+                        Toolkit.getDefaultToolkit().getSystemClipboard()
+                                .setContents(new StringSelection(bm.getPath()), null);
+                        setStatus(bm.getDisplayName() + " 경로를 복사했습니다.");
+                    }
+                    else if (e.getClickCount()==2 && SwingUtilities.isLeftMouseButton(e)) {
+                        openBookmarkPath(bm.getPath());
+                    }
+                }
+            };
+
+            // 4) 컨텍스트 메뉴(우클릭) 범위 확장: 행 + 라벨 모두
+            MouseAdapter popupAdapter = new MouseAdapter() {
+                private void maybeShow(MouseEvent e) {
+                    if (e.isPopupTrigger()) {
+                        rowMenu.show((Component) e.getSource(), e.getX(), e.getY());
+                    }
+                }
+                @Override public void mousePressed(MouseEvent e) { maybeShow(e); }
+                @Override public void mouseReleased(MouseEvent e) { maybeShow(e); }
+            };
+
+            // 리스너 부착: 행 + 라벨(⋯ 버튼엔 hover만)
+            this.addMouseListener(hoverAdapter);
+            this.addMouseMotionListener(dragStarter);
+            this.addMouseListener(openOnDoubleClick);
+            this.addMouseListener(popupAdapter);
+
+            nameLabel.addMouseListener(hoverAdapter);
+            nameLabel.addMouseMotionListener(dragStarter);
+            nameLabel.addMouseListener(openOnDoubleClick);
+            nameLabel.addMouseListener(popupAdapter);
+
+            // ✨ 고정 행 높이: 높이만 고정하고 폭은 레이아웃에 맡김
+            setAlignmentX(1.0f);
+        }
+
+        // 고정 높이를 보장 (폭은 부모 폭을 따르도록)
+        @Override public Dimension getPreferredSize() {
+            Dimension d = super.getPreferredSize();
+            d.height = ROW_HEIGHT;
+            return d;
+        }
+        @Override public Dimension getMinimumSize() {
+            Dimension d = super.getMinimumSize();
+            d.height = ROW_HEIGHT;
+            return d;
+        }
+        @Override public Dimension getMaximumSize() {
+            Dimension d = super.getMaximumSize();
+            d.height = ROW_HEIGHT;
+            d.width = Integer.MAX_VALUE; // BoxLayout 폭 채움
+            return d;
         }
 
         private JPopupMenu buildRowPopupMenu(){
@@ -516,7 +638,7 @@ public class MainFrameV2 extends JFrame {
 
             JMenuItem rename = new JMenuItem("이름 변경…");
             rename.addActionListener(e -> {
-                String newName = JOptionPane.showInputDialog(MainFrameV2.this, "표시 이름", bm.getDisplayName());
+                String newName = JOptionPane.showInputDialog(MainFrameV3.this, "표시 이름", bm.getDisplayName());
                 if (newName == null) return;
                 try { bookmarkService.updateBookmark(bm.getId(), newName, bm.getPath()); setStatus("이름이 변경되었습니다."); rebuildAccordion(); }
                 catch (RuntimeException ex) { showError("수정 실패: " + ex.getMessage()); }
@@ -528,7 +650,7 @@ public class MainFrameV2 extends JFrame {
                 JFileChooser fc = new JFileChooser();
                 fc.setDialogTitle("새 경로 선택");
                 fc.setFileSelectionMode(JFileChooser.FILES_AND_DIRECTORIES);
-                int res = fc.showOpenDialog(MainFrameV2.this);
+                int res = fc.showOpenDialog(MainFrameV3.this);
                 if (res != JFileChooser.APPROVE_OPTION) return;
                 File f = fc.getSelectedFile();
                 try { bookmarkService.updateBookmark(bm.getId(), bm.getDisplayName(), f.getAbsolutePath()); setStatus("경로가 변경되었습니다."); rebuildAccordion(); }
@@ -545,7 +667,7 @@ public class MainFrameV2 extends JFrame {
         }
 
         private void deleteBookmark(){
-            int r = JOptionPane.showConfirmDialog(MainFrameV2.this,
+            int r = JOptionPane.showConfirmDialog(MainFrameV3.this,
                     "삭제하시겠습니까?\n" + bm.getDisplayName(),
                     "확인", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
             if (r != JOptionPane.OK_OPTION) return;
@@ -940,6 +1062,7 @@ public class MainFrameV2 extends JFrame {
         addGroupBtn.setEnabled(!busy);
         expandAllBtn.setEnabled(!busy);
         collapseAllBtn.setEnabled(!busy);
+        toolbarMenuBtn.setEnabled(!busy);
         for (Component c : accordion.getComponents()) {
             if (c instanceof GroupSection gs) {
                 gs.toggle.setEnabled(!busy);
@@ -1150,13 +1273,91 @@ public class MainFrameV2 extends JFrame {
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setColor(thumbColor);
             g2.fillRoundRect(thumbBounds.x + 2, thumbBounds.y + 2,
-                             thumbBounds.width - 4, thumbBounds.height - 4, 4, 4);
+                    thumbBounds.width - 4, thumbBounds.height - 4, 4, 4);
             g2.dispose();
         }
 
         @Override
         protected void paintTrack(Graphics g, JComponent c, Rectangle trackBounds) {
             // 트랙을 그리지 않음 (Notion 스타일)
+        }
+    }
+
+    /** 가로 스크롤 방지 + 뷰포트 폭에 맞춰지는 패널 */
+    private static class ScrollablePanel extends JPanel implements Scrollable {
+        @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return ROW_HEIGHT;
+        }
+        @Override public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) {
+            return ROW_HEIGHT * 8;
+        }
+        @Override public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override public boolean getScrollableTracksViewportHeight() { return false; }
+    }
+
+    /** 벡터로 그리는 기어 아이콘 (고해상도에서도 선명) */
+    private static final class GearIcon implements Icon {
+        private final int size;
+        private final Color color;
+
+        GearIcon(int size, Color color) {
+            this.size = size;
+            this.color = color;
+        }
+
+        @Override public int getIconWidth()  { return size; }
+        @Override public int getIconHeight() { return size; }
+
+        @Override public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                float s = size;
+                float cx = x + s / 2f;
+                float cy = y + s / 2f;
+
+                // 기어 기본 치수
+                float outerR = s * 0.42f;         // 바깥 반지름
+                float innerR = outerR * 0.55f;    // 안쪽 구멍 반지름
+                int teeth = 8;                    // 톱니 개수
+                float toothLen = s * 0.14f;       // 톱니 길이
+                float toothW  = s * 0.16f;        // 톱니 너비(각도 기준)
+
+                // 바디(도넛)
+                java.awt.geom.Area gear = new java.awt.geom.Area(
+                        new java.awt.geom.Ellipse2D.Float(cx - outerR, cy - outerR, outerR * 2, outerR * 2)
+                );
+                gear.subtract(new java.awt.geom.Area(
+                        new java.awt.geom.Ellipse2D.Float(cx - innerR, cy - innerR, innerR * 2, innerR * 2)
+                ));
+
+                // 톱니(사각형을 회전시켜 더함)
+                for (int i = 0; i < teeth; i++) {
+                    double theta = i * (2 * Math.PI / teeth);
+                    // 위쪽 방향 기준 톱니 하나(세로 직사각형)
+                    float tw = toothW;            // 폭
+                    float th = toothLen;          // 길이
+                    java.awt.geom.Rectangle2D.Float rect =
+                            new java.awt.geom.Rectangle2D.Float(cx - tw/2f, (float)(cy - outerR - th), tw, th);
+
+                    java.awt.geom.AffineTransform at = new java.awt.geom.AffineTransform();
+                    at.rotate(theta, cx, cy);
+                    gear.add(new java.awt.geom.Area(at.createTransformedShape(rect)));
+                }
+
+                // 채우기
+                g2.setColor(color);
+                g2.fill(gear);
+
+                // (선택) 살짝 중앙 축 표시
+                float hubR = s * 0.06f;
+                g2.fill(new java.awt.geom.Ellipse2D.Float(cx - hubR, cy - hubR, hubR * 2, hubR * 2));
+
+            } finally {
+                g2.dispose();
+            }
         }
     }
 }
